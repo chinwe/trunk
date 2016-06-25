@@ -1,0 +1,6 @@
+Qt/build-*-Debug/*
+Qt/build-*-Release/*
+*.o
+*.user
+ui_*.h
+moc_*
