@@ -1,13 +1,12 @@
-#the compile to use
+target = auto_type
 CC = clang
 
-CFLAGS = -std=c++11
+$(target) : $(target).o
+	$(CC) -o $(target) $(target).o -lstdc++
 
-LFLAGS = -lstdc++
+$(target).o : $(target).cpp
+	$(CC) -c $(target).cpp -std=c++11
 
-TARGET = attributes 
-
-all : $(TARGET)
-
-$(TARGET) : $(TARGET).cpp
-	$(CC) $(CFLAGS) $(TARGET).cpp $(LFLAGS) 
+.PHONY : clean
+clean:
+	-rm $(target) $(target).o
