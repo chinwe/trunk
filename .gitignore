@@ -4,3 +4,8 @@ Qt/build-*-Release/*
 *.user
 ui_*.h
 moc_*
+
+.makefile.swp
+
+*.o
+*.out
