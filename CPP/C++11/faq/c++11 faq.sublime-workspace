@@ -1,0 +1,316 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"cou",
+				"count"
+			],
+			[
+				"in",
+				"indices"
+			],
+			[
+				"be",
+				"beginend	$1.begin(), $1.end()"
+			],
+			[
+				"file_",
+				"file_base_name"
+			],
+			[
+				"ve",
+				"vecNumbers"
+			]
+		]
+	},
+	"buffers":
+	[
+		{
+			"file": "regx.cpp",
+			"settings":
+			{
+				"buffer_size": 1279,
+				"line_ending": "Unix"
+			}
+		}
+	],
+	"build_system": "",
+	"build_system_choices":
+	[
+		[
+			[
+				[
+					"Packages/C++/C++ Single File.sublime-build",
+					""
+				],
+				[
+					"Packages/C++/C++ Single File.sublime-build",
+					"Run"
+				]
+			],
+			[
+				"Packages/C++/C++ Single File.sublime-build",
+				"Run"
+			]
+		],
+		[
+			[
+				[
+					"Packages/User/C++11.sublime-build",
+					""
+				],
+				[
+					"Packages/User/C++11.sublime-build",
+					"run"
+				]
+			],
+			[
+				"Packages/User/C++11.sublime-build",
+				"run"
+			]
+		]
+	],
+	"build_varint": "",
+	"command_palette":
+	{
+		"height": 392.0,
+		"last_filter": "",
+		"selected_items":
+		[
+			[
+				"Package Control: ",
+				"Package Control: Remove Package"
+			],
+			[
+				"clang",
+				"SublimeCodeIntel: Disable Plugin"
+			],
+			[
+				"in",
+				"SublimeCodeIntel: Disable Plugin"
+			],
+			[
+				"install",
+				"Package Control: Install Package"
+			],
+			[
+				"instak",
+				"Package Control: Install Package"
+			],
+			[
+				"insta",
+				"Package Control: Install Package"
+			]
+		],
+		"width": 485.0
+	},
+	"console":
+	{
+		"height": 126.0,
+		"history":
+		[
+			"import urllib.request,os; pf = 'Package Control.sublime-package'; ipp = sublime.installed_packages_path(); urllib.request.install_opener( urllib.request.build_opener( urllib.request.ProxyHandler()) ); open(os.path.join(ipp, pf), 'wb').write(urllib.request.urlopen( 'http://sublime.wbond.net/' + pf.replace(' ','%20')).read())"
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"expanded_folders":
+	[
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq"
+	],
+	"file_history":
+	[
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/lambda.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/regx.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/regx",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/decltype.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/range_based_for_loop.cpp",
+		"/Users/zhangjunwei/Library/Application Support/Sublime Text 3/Packages/User/C++11.sublime-build",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/member_initializers.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/constexpr.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/range_union.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/attributes.cpp",
+		"/Users/zhangjunwei/Library/Application Support/Sublime Text 3/Packages/User/C++11",
+		"/Users/zhangjunwei/Library/Application Support/Sublime Text 3/Packages/User/untitled.sublime-build",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/auto_type.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/atomic_operations",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/atomic_operations.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/strong_type_class_enum.cpp"
+	],
+	"find":
+	{
+		"height": 0.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 0,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "regx.cpp",
+					"semi_transient": true,
+					"settings":
+					{
+						"buffer_size": 1279,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								122,
+								122
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/C++/C++.sublime-syntax",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 29.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 0,
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 0.0
+	},
+	"input":
+	{
+		"height": 0.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.cc":
+	{
+		"height": 112.0
+	},
+	"output.exec":
+	{
+		"height": 192.0
+	},
+	"output.find_results":
+	{
+		"height": 0.0
+	},
+	"pinned_build_system": "Packages/User/C++11.sublime-build",
+	"project": "c++11 faq.sublime-project",
+	"replace":
+	{
+		"height": 0.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+			[
+				"",
+				"~/workspace/github/trunk/CPP/C++11/faq/lambda.cpp"
+			],
+			[
+				"lam",
+				"~/workspace/github/trunk/CPP/C++11/faq/lambda.cpp"
+			]
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"selected_group": 0,
+	"settings":
+	{
+	},
+	"show_minimap": true,
+	"show_open_files": true,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 263.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}

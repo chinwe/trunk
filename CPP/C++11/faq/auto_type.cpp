@@ -15,7 +15,13 @@ int main(int argc, char** argv)
 
 	for (auto it = vecNumbers.begin(); it != vecNumbers.end(); ++it)
 	{
-		cout << *it << endl;
+		//cout << *it << endl;
 	}
+
+	for (auto& it : vecNumbers)
+	{
+		cout << ++it << endl;
+	}
+
 	return 0;
 }

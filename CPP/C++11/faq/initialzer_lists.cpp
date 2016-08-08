@@ -24,5 +24,10 @@ int main(int argc, char** argv)
 
 	plusplusone({1, 2, 3, 4});
 	
+	// compile error
+	//int i{1.2};
+	//char cc{256};
+	char c{1};
+
 	return 0;
 }
