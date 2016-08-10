@@ -4,6 +4,18 @@
 		"selected_items":
 		[
 			[
+				"re",
+				"return"
+			],
+			[
+				"inc",
+				"include"
+			],
+			[
+				"for",
+				"for	For Loop"
+			],
+			[
 				"cou",
 				"count"
 			],
@@ -28,15 +40,15 @@
 	"buffers":
 	[
 		{
-			"file": "regx.cpp",
+			"file": "raw_string.cpp",
 			"settings":
 			{
-				"buffer_size": 1279,
+				"buffer_size": 350,
 				"line_ending": "Unix"
 			}
 		}
 	],
-	"build_system": "",
+	"build_system": "Packages/User/C++11.sublime-build",
 	"build_system_choices":
 	[
 		[
@@ -53,6 +65,22 @@
 			[
 				"Packages/C++/C++ Single File.sublime-build",
 				"Run"
+			]
+		],
+		[
+			[
+				[
+					"Packages/Makefile/Make.sublime-build",
+					""
+				],
+				[
+					"Packages/Makefile/Make.sublime-build",
+					"Clean"
+				]
+			],
+			[
+				"Packages/Makefile/Make.sublime-build",
+				"Clean"
 			]
 		],
 		[
@@ -104,7 +132,7 @@
 				"Package Control: Install Package"
 			]
 		],
-		"width": 485.0
+		"width": 449.0
 	},
 	"console":
 	{
@@ -129,19 +157,33 @@
 	],
 	"file_history":
 	[
-		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/lambda.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/template_typedef.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/nullptr.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/template_main.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/cc-MM.sh",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/c++11 faq.sublime-project",
+		"/Users/zhangjunwei/Library/Application Support/Sublime Text 3/Packages/User/untitled.sublime-build",
+		"/Users/zhangjunwei/Library/Application Support/Sublime Text 3/Packages/User/C++11.sublime-build",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/static_assert.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/rvalue_refrence.cpp",
 		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/regx.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/raw_string.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/constexpr",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/constexpr.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/raw_string",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/auto_type",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/delete_default_copy.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/inherit_constructer.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/initialzer_lists.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/auto_type.cpp",
+		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/lambda.cpp",
 		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/regx",
 		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/decltype.cpp",
 		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/range_based_for_loop.cpp",
-		"/Users/zhangjunwei/Library/Application Support/Sublime Text 3/Packages/User/C++11.sublime-build",
 		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/member_initializers.cpp",
-		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/constexpr.cpp",
 		"/Users/zhangjunwei/workspace/github/trunk/CPP/range_union.cpp",
 		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/attributes.cpp",
 		"/Users/zhangjunwei/Library/Application Support/Sublime Text 3/Packages/User/C++11",
-		"/Users/zhangjunwei/Library/Application Support/Sublime Text 3/Packages/User/untitled.sublime-build",
-		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/auto_type.cpp",
 		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/atomic_operations",
 		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/atomic_operations.cpp",
 		"/Users/zhangjunwei/workspace/github/trunk/CPP/C++11/faq/strong_type_class_enum.cpp"
@@ -184,29 +226,27 @@
 			[
 				{
 					"buffer": 0,
-					"file": "regx.cpp",
-					"semi_transient": true,
+					"file": "raw_string.cpp",
+					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 1279,
+						"buffer_size": 350,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								122,
-								122
+								302,
+								302
 							]
 						],
 						"settings":
 						{
-							"syntax": "Packages/C++/C++.sublime-syntax",
-							"tab_size": 4,
-							"translate_tabs_to_spaces": true
+							"syntax": "Packages/C++/C++.sublime-syntax"
 						},
 						"translation.x": 0.0,
-						"translation.y": 29.0,
+						"translation.y": 0.0,
 						"zoom_level": 1.0
 					},
 					"stack_index": 0,
@@ -271,6 +311,18 @@
 		"last_filter": "",
 		"selected_items":
 		[
+			[
+				"raw",
+				"raw_string.cpp"
+			],
+			[
+				"r",
+				"regx.cpp"
+			],
+			[
+				"c",
+				"constexpr.cpp"
+			],
 			[
 				"",
 				"~/workspace/github/trunk/CPP/C++11/faq/lambda.cpp"

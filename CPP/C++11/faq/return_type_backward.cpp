@@ -24,6 +24,7 @@ auto MyList::erase(Node* p) -> Node*
 
 int main(int argc, char** argv)
 {
+	using pMul = []()->void;
 	std::cout << mul(1, 23.4);
 	return 0;
 }
