@@ -12,3 +12,5 @@ moc_*
 
 *.sublime-project
 *.sublime-workspace
+
+CPP/*.dSYM/*
