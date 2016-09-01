@@ -1,3 +1,6 @@
+.DS_Store
+
+
 Qt/build-*-Debug/*
 Qt/build-*-Release/*
 *.o
