@@ -1,5 +1,6 @@
 #include "camerademo.h"
 #include "ui_camerademo.h"
+#include <QCameraImageCapture>
 #include <QCameraInfo>
 #include <QFileDialog>
 
@@ -14,8 +15,6 @@ CameraDemo::CameraDemo(QWidget *parent) :
     m_pVideoWidget = new QVideoWidget();
 
     ui->gridLayout->addWidget(m_pVideoWidget, 1, 0);
-
-    ui->m_pPushButtonSave->setEnabled(false);
 
     InitCameraComboxBox();
 
@@ -73,27 +72,48 @@ void CameraDemo::OnCaptureBtnClicked()
         {
             m_pCurrentCamera->stop();
 
-            ui->m_pPushButtonSave->setEnabled(true);
-            ui->m_pPushButtonCapture->setText("Video");
+            ui->m_pPushButtonSave->setEnabled(false);
+            ui->m_pPushButtonCapture->setText("Start");
         }
         else
         {
             m_pCurrentCamera->start();
 
-            ui->m_pPushButtonSave->setEnabled(false);
-            ui->m_pPushButtonCapture->setText("Capture");
+            ui->m_pPushButtonSave->setEnabled(true);
+            ui->m_pPushButtonCapture->setText("Stop");
         }
     }
 }
 
 void CameraDemo::OnSaveBtnClicked()
 {
+    /*
     QString strFileName = QFileDialog::getSaveFileName(this, "Save", "", "PNG(*.png)");
 
     if (!strFileName.isEmpty())
     {
-        QPixmap pixmap = m_pVideoWidget->grab();
+        //QPixmap pixmap = m_pVideoWidget->grab();
+        //pixmap.save(strFileName, "png");
 
-        pixmap.save(strFileName, "png");
-    }
+
+    }*/
+
+    QCameraImageCapture* pImageCapture = new QCameraImageCapture(m_pCurrentCamera);
+
+    m_pCurrentCamera->setCaptureMode(QCamera::CaptureStillImage);
+    pImageCapture->setCaptureDestination(QCameraImageCapture::CaptureToFile);
+
+    //on half pressed shutter button
+    m_pCurrentCamera->searchAndLock();
+
+    QString strPwd = qApp->applicationDirPath();
+    qDebug() << strPwd;
+
+    //on shutter button pressed
+    pImageCapture->capture();
+
+    //on shutter button released
+    m_pCurrentCamera->unlock();
+
+    delete pImageCapture;
 }
