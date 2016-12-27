@@ -17,3 +17,6 @@ moc_*
 *.sublime-workspace
 
 CPP/*.dSYM/*
+
+go/src/github.com/astaxie/beego/
+go/pkg
