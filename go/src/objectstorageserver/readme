@@ -1,0 +1,13 @@
+对象存储服务器，能实现二进制数据存储和获取
+
+配置项：最大大小（单个chunk 64M 的整数倍）
+模式：自动扩展／预分配
+
+index.bin
+[chunkcount][chunkmetadata][chunkmetadata]
+
+chunkmetadata
+[chunkno][objectcount][objectmetadata][objectmetadata]
+
+objectmetadata
+[objectid][channel][offset][datalen][timestamp]

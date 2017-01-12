@@ -190,13 +190,16 @@
 				TargetAttributes = {
 					D6848B8F1D1E2F24008D9BF9 = {
 						CreatedOnToolsVersion = 7.3.1;
+						LastSwiftMigration = 0800;
 					};
 					D6848BA01D1E2F24008D9BF9 = {
 						CreatedOnToolsVersion = 7.3.1;
+						LastSwiftMigration = 0800;
 						TestTargetID = D6848B8F1D1E2F24008D9BF9;
 					};
 					D6848BAB1D1E2F24008D9BF9 = {
 						CreatedOnToolsVersion = 7.3.1;
+						LastSwiftMigration = 0800;
 						TestTargetID = D6848B8F1D1E2F24008D9BF9;
 					};
 				};
@@ -391,6 +394,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = zhangjunwei.FirstSwiftMacOSApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 3.0;
 			};
 			name = Debug;
 		};
@@ -403,6 +407,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = zhangjunwei.FirstSwiftMacOSApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 3.0;
 			};
 			name = Release;
 		};
@@ -415,6 +420,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = zhangjunwei.FirstSwiftMacOSAppTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 3.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FirstSwiftMacOSApp.app/Contents/MacOS/FirstSwiftMacOSApp";
 			};
 			name = Debug;
@@ -428,6 +434,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = zhangjunwei.FirstSwiftMacOSAppTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 3.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FirstSwiftMacOSApp.app/Contents/MacOS/FirstSwiftMacOSApp";
 			};
 			name = Release;
@@ -440,6 +447,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = zhangjunwei.FirstSwiftMacOSAppUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 3.0;
 				TEST_TARGET_NAME = FirstSwiftMacOSApp;
 			};
 			name = Debug;
@@ -452,6 +460,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = zhangjunwei.FirstSwiftMacOSAppUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 3.0;
 				TEST_TARGET_NAME = FirstSwiftMacOSApp;
 			};
 			name = Release;
@@ -475,6 +484,7 @@
 				D6848BB71D1E2F24008D9BF9 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		D6848BB81D1E2F24008D9BF9 /* Build configuration list for PBXNativeTarget "FirstSwiftMacOSAppTests" */ = {
 			isa = XCConfigurationList;
@@ -483,6 +493,7 @@
 				D6848BBA1D1E2F24008D9BF9 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		D6848BBB1D1E2F24008D9BF9 /* Build configuration list for PBXNativeTarget "FirstSwiftMacOSAppUITests" */ = {
 			isa = XCConfigurationList;
@@ -491,6 +502,7 @@
 				D6848BBD1D1E2F24008D9BF9 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

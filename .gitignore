@@ -18,5 +18,10 @@ moc_*
 
 CPP/*.dSYM/*
 
-go/src/github.com/astaxie/beego/
+go/src/github.com/
+go/src/golang.org/
+go/src/sourcegraph.com/
 go/pkg
+go/bin/
+
+.vscode/
