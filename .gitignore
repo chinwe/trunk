@@ -1,6 +1,5 @@
 .DS_Store
 
-
 Qt/build-*-Debug/*
 Qt/build-*-Release/*
 *.o
@@ -27,3 +26,6 @@ go/bin/
 .vscode/
 
 electron/electron-quick-start/
+
+Kotlin/*.jar
+Kotlin/*/*.jar
