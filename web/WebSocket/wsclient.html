@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Title</title> 
+		<script>
+        
+        var echoWS = new WebSocket("ws://echo.websocket.org/", ["com.kaazing.echo",
+        "example.imaginary.protocal"])
+
+        echoWS.onopen = function(e) {
+            console.log("Connection open...", e);
+
+            echoWS.send("Initial data");
+        }
+
+        echoWS.onclose = function(e) {
+            console.log("Connection closed...", e);
+        }
+
+        echoWS.onmessage = function(e) {
+            if (typeof e.data === "string") {
+                console.log("String message received : ", e.data, e);
+            } else {
+                console.log("Other message received : ", e.data, e);
+            }
+
+            echoWS.close();
+        }
+
+        echoWS.onerror = function(e) {
+            console.log("WebSocket Error:", e);
+        }
+
+		</script>
+	</head>
+	
+	<body>
+
+	<h1>WebSocket Client Demo</h1>
+
+	</body>
+
+</html>
