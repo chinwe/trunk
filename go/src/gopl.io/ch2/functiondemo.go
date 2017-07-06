@@ -12,7 +12,7 @@ func main() {
 
 	fmt.Println("a")
 	defer fmt.Println("b")
-	def er fmt.Println("c")
+	defer fmt.Println("c")
 }
 
 func aaaa(a ...int) {
