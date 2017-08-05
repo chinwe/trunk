@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		D642E49F1F34CA9F007ACD3D /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D642E49E1F34CA9F007ACD3D /* main.cpp */; };
+		D65776541F34D255006F64F1 /* libsum.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = D65776531F34D255006F64F1 /* libsum.dylib */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -25,6 +26,8 @@
 /* Begin PBXFileReference section */
 		D642E49B1F34CA9F007ACD3D /* sumdemo */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = sumdemo; sourceTree = BUILT_PRODUCTS_DIR; };
 		D642E49E1F34CA9F007ACD3D /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		D642E4A81F34CC47007ACD3D /* sum.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = sum.hpp; sourceTree = "<group>"; };
+		D65776531F34D255006F64F1 /* libsum.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libsum.dylib; path = "../../../../../Library/Developer/Xcode/DerivedData/sumdemo-gnnzhmlzcjlqidepgezconnvguxy/Build/Products/Debug/libsum.dylib"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -32,6 +35,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D65776541F34D255006F64F1 /* libsum.dylib in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -43,6 +47,7 @@
 			children = (
 				D642E49D1F34CA9F007ACD3D /* sumdemo */,
 				D642E49C1F34CA9F007ACD3D /* Products */,
+				D642E4A51F34CBEA007ACD3D /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -57,9 +62,18 @@
 		D642E49D1F34CA9F007ACD3D /* sumdemo */ = {
 			isa = PBXGroup;
 			children = (
+				D642E4A81F34CC47007ACD3D /* sum.hpp */,
 				D642E49E1F34CA9F007ACD3D /* main.cpp */,
 			);
 			path = sumdemo;
+			sourceTree = "<group>";
+		};
+		D642E4A51F34CBEA007ACD3D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				D65776531F34D255006F64F1 /* libsum.dylib */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -216,6 +230,10 @@
 		D642E4A31F34CA9F007ACD3D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/sumdemo",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -223,6 +241,10 @@
 		D642E4A41F34CA9F007ACD3D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/sumdemo",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
@@ -246,6 +268,7 @@
 				D642E4A41F34CA9F007ACD3D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
