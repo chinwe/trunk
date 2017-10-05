@@ -29,3 +29,5 @@ electron/electron-quick-start/
 
 Kotlin/*.jar
 Kotlin/*/*.jar
+
+AppleScript/*.scpt
