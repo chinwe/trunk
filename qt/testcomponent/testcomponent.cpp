@@ -4,3 +4,8 @@
 Testcomponent::Testcomponent()
 {
 }
+
+QString Testcomponent::name() const
+{
+    return "Testcomponent";
+}

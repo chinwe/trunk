@@ -1,0 +1,1 @@
+install_name_tool -change "libtestcomponent.1.dylib" "@executable_path/libtestcomponent.1.dylib" framework
