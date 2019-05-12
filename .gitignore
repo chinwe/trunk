@@ -33,3 +33,8 @@ Kotlin/*.jar
 Kotlin/*/*.jar
 
 AppleScript/*.scpt
+Spring/readinglist/.mvn/wrapper/maven-wrapper.properties
+Spring/readinglist/mvnw
+Spring/readinglist/.mvn/wrapper/maven-wrapper.jar
+Spring/readinglist/.mvn/wrapper/MavenWrapperDownloader.java
+Spring/readinglist/mvnw.cmd
