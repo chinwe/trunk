@@ -30,19 +30,56 @@ vector<size_t> existIds() {
     return vecIds;
 }
 
+#define MAX 10000
+#define SHIFT 5
+#define MASK 0x1F
+#define DIGITS 32
+
+unsigned int* pBitmap = new unsigned int[MAX / DIGITS + 1]{};
+
+void setBit(int n)
+{
+    // 将逻辑位置为n的二进制位置为1
+    // n>>SHIFT右移5位相当于除以32求算字节位置，n&MASK相当于对32取余即求位位置
+    pBitmap[n >> SHIFT] |= (1 << (n & MASK));
+}
+
+int testBit(int n)
+{
+    // 测试逻辑位置为n的二进制位是否为1
+    return pBitmap[n >> SHIFT] & (1 << (n & MASK));
+}
+
+void clearBit(int n)
+{
+    // 将逻辑位置为n的二进制位置为0
+    pBitmap[n >> SHIFT] &= (~(1 << (n & MASK)));
+}
+
 int main(int argc, const char * argv[]) {
     
     constexpr size_t kMaxId = maxId() + 1;
-    bitset<kMaxId> bitmap;
     
     auto&& vecIds = existIds();
+
+    // cpp
+    bitset<kMaxId> bitmap;
     
     for (size_t i : vecIds) {
         bitmap.set(i);
+        setBit((int)i);
     }
     
     for (size_t i = 1; i <= kMaxId; ++i) {
         if (!bitmap.test(i)) {
+            std::cout << i << endl;
+            break;
+        }
+    }
+    
+    // c
+    for (size_t i = 1; i <= kMaxId; ++i) {
+        if (!testBit((int)i)) {
             std::cout << i << endl;
             break;
         }
