@@ -1,0 +1,76 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>component</title>
+        <!-- 开发环境版本，包含了有帮助的命令行警告 -->
+        <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+    </head>
+
+    <body>
+
+        <div id="app">
+            <input type="text" v-model.lazy="message">
+            <h3>{{message}}</h3>
+
+            <cpn :cmovies="movies" @item-click='cpnClick'></cpn>
+        </div>
+        
+        <template id="cpn">
+            <div>
+                <h2>{{ title }}</h2>
+                <p>是啊</p>
+                <ul v-for="item in cmovies">
+                    <li>{{ item }}</li>
+                </ul>
+                <p>{{ cmessage }}</p>
+                <button v-for="item in catagories" @click="btnClick(item)">{{ item.name }}</button>
+            </div>
+        </template>
+
+        <script>
+            const cpn = {
+                template: '#cpn',
+                // 父组件传递数据给子组件 props
+                props: {
+                    cmovies: Array,
+                    cmessage: {
+                        type: String,
+                        default: '消息'
+                    }
+                },
+                data() {
+                    return {
+                        title: '一个组件',
+                        catagories: [
+                            { id: 1, name: '数码'},
+                            { id: 2, name: '电子'}
+                        ]
+                    }
+                },
+                methods: {
+                    btnClick(item) {
+                        // 子组件自定义事件通知父组件
+                        this.$emit('item-click', item)
+                    }
+                },
+            }
+
+            var app = new Vue({ 
+            el: '#app',
+            data: {
+                message: 'Hello',
+                movies: ['冰雪奇缘2', '我和我的祖国']
+            },
+            methods: {
+                cpnClick(item) {
+                    console.log(item.name + ' click')
+                }
+            },
+            components: {
+                // 局部组件
+                cpn
+            }
+            });
+        </script>
+    </body>
+</html>
