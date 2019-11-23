@@ -92,12 +92,7 @@
                 },
                 computed: {
                     totalPrice() {
-                        result = 0.00
-                        for (let index = 0; index < this.books.length; index++) {
-                            const item = this.books[index];
-                            result = result + (item.price * item.count)
-                        }
-                        return result
+                        return this.books.reduce((pre, book) => pre + book.price * book.count, 0.0)
                     }
                 },
             });

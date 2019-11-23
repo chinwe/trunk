@@ -1,0 +1,33 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>v-model</title>
+        <!-- 开发环境版本，包含了有帮助的命令行警告 -->
+        <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+    </head>
+
+    <body>
+        
+        <div id="app">
+            <label v-for="habbit in habbitTitles" :for="habbit">
+                <input type="checkbox" :value="habbit" :id="habbit" v-model="habbits">{{habbit}}
+            </label>
+            <h3>您的爱好是: {{habbits}}</h3>
+
+            <input type="text" v-model.lazy="message">
+            <h3>{{message}}</h3>
+        </div>
+        
+        <script>
+            var app = new Vue({ 
+            el: '#app',
+            data: {
+                message: 'Hello',
+                habbits: [],
+                habbitTitles: ['看电影', '唱歌', '看书', '爬山']
+            }
+            });
+
+        </script>
+    </body>
+</html>
