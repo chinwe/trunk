@@ -38,3 +38,5 @@ Spring/readinglist/mvnw
 Spring/readinglist/.mvn/wrapper/maven-wrapper.jar
 Spring/readinglist/.mvn/wrapper/MavenWrapperDownloader.java
 Spring/readinglist/mvnw.cmd
+
+node_modules/
