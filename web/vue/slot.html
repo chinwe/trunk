@@ -1,0 +1,43 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>component</title>
+        <!-- 开发环境版本，包含了有帮助的命令行警告 -->
+        <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+    </head>
+
+    <body>
+        <div id="app">
+            <cpn><button slot="left">button slot</button></cpn>
+            <cpn><label slot="right">label slot</label></cpn>
+            <cpn></cpn>
+        </div>
+        
+        <template id="cpn">
+            <div>
+                <h2>{{ title }}</h2>
+                <slot name="left"><span>Left</span></slot>
+                <slot name="right"><span>Right</span></slot>
+            </div>
+        </template>
+
+        <script>
+            const cpn = {
+                template: '#cpn',
+                data() {
+                    return {
+                        title: 'component'
+                    }
+                }
+            }
+
+            var app = new Vue({ 
+                el: '#app',
+                components: {
+                    // 局部组件
+                    cpn
+                }
+            });
+        </script>
+    </body>
+</html>
