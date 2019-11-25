@@ -40,3 +40,4 @@ Spring/readinglist/.mvn/wrapper/MavenWrapperDownloader.java
 Spring/readinglist/mvnw.cmd
 
 node_modules/
+dist/
