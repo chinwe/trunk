@@ -41,3 +41,4 @@ Spring/readinglist/mvnw.cmd
 
 node_modules/
 dist/
+web/webpack/start/dist/bundle.js

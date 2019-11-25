@@ -57,14 +57,22 @@
 /******/ 	__webpack_require__.o = function(object, property) { return Object.prototype.hasOwnProperty.call(object, property); };
 /******/
 /******/ 	// __webpack_public_path__
-/******/ 	__webpack_require__.p = "";
+/******/ 	__webpack_require__.p = "dist/";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 2);
+/******/ 	return __webpack_require__(__webpack_require__.s = 3);
 /******/ })
 /************************************************************************/
 /******/ ([
 /* 0 */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
+/* harmony default export */ __webpack_exports__["default"] = (__webpack_require__.p + "assets/th.ff6cafd5.jpeg");
+
+/***/ }),
+/* 1 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -160,7 +168,7 @@ function toComment(sourceMap) {
 }
 
 /***/ }),
-/* 1 */
+/* 2 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -448,26 +456,31 @@ module.exports = function (list, options) {
 };
 
 /***/ }),
-/* 2 */
+/* 3 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
-/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__js_mathUtils__ = __webpack_require__(3);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_0__js_mathUtils__ = __webpack_require__(4);
+/* harmony import */ var __WEBPACK_IMPORTED_MODULE_1__img_th_jpeg__ = __webpack_require__(0);
+
+
 
 
 console.log(Object(__WEBPACK_IMPORTED_MODULE_0__js_mathUtils__["a" /* sum */])(1, 2))
 
 // 依赖css
-__webpack_require__(4)
+__webpack_require__(5)
 
 // 依赖less
-__webpack_require__(6)
+__webpack_require__(8)
 
 document.writeln("<h1>less<h2>")
 
+
+
 /***/ }),
-/* 3 */
+/* 4 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -479,10 +492,10 @@ function sum(a, b) {
 
 
 /***/ }),
-/* 4 */
+/* 5 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var content = __webpack_require__(5);
+var content = __webpack_require__(6);
 
 if (typeof content === 'string') {
   content = [[module.i, content, '']];
@@ -493,27 +506,60 @@ var options = {}
 options.insert = "head";
 options.singleton = false;
 
-var update = __webpack_require__(1)(content, options);
+var update = __webpack_require__(2)(content, options);
 
 if (content.locals) {
   module.exports = content.locals;
 }
-
-
-/***/ }),
-/* 5 */
-/***/ (function(module, exports, __webpack_require__) {
-
-exports = module.exports = __webpack_require__(0)(false);
-// Module
-exports.push([module.i, "body {\n    background: transparent;\n}", ""]);
 
 
 /***/ }),
 /* 6 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var content = __webpack_require__(7);
+exports = module.exports = __webpack_require__(1)(false);
+// Imports
+var getUrl = __webpack_require__(7);
+var ___CSS_LOADER_URL___0___ = getUrl(__webpack_require__(0));
+// Module
+exports.push([module.i, "body {\n    background: transparent;\n    background-image: url(" + ___CSS_LOADER_URL___0___ + ");\n}", ""]);
+
+
+/***/ }),
+/* 7 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+module.exports = function (url, needQuotes) {
+  // eslint-disable-next-line no-underscore-dangle, no-param-reassign
+  url = url.__esModule ? url.default : url;
+
+  if (typeof url !== 'string') {
+    return url;
+  } // If url is already wrapped in quotes, remove them
+
+
+  if (/^['"].*['"]$/.test(url)) {
+    // eslint-disable-next-line no-param-reassign
+    url = url.slice(1, -1);
+  } // Should url be wrapped?
+  // See https://drafts.csswg.org/css-values-3/#urls
+
+
+  if (/["'() \t\n]/.test(url) || needQuotes) {
+    return "\"".concat(url.replace(/"/g, '\\"').replace(/\n/g, '\\n'), "\"");
+  }
+
+  return url;
+};
+
+/***/ }),
+/* 8 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var content = __webpack_require__(9);
 
 if (typeof content === 'string') {
   content = [[module.i, content, '']];
@@ -524,7 +570,7 @@ var options = {}
 options.insert = "head";
 options.singleton = false;
 
-var update = __webpack_require__(1)(content, options);
+var update = __webpack_require__(2)(content, options);
 
 if (content.locals) {
   module.exports = content.locals;
@@ -532,10 +578,10 @@ if (content.locals) {
 
 
 /***/ }),
-/* 7 */
+/* 9 */
 /***/ (function(module, exports, __webpack_require__) {
 
-exports = module.exports = __webpack_require__(0)(false);
+exports = module.exports = __webpack_require__(1)(false);
 // Module
 exports.push([module.i, "body {\n  color: red;\n}\n", ""]);
 
