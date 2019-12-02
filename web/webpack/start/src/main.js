@@ -12,3 +12,12 @@ require("./css/special.less")
 
 document.writeln("<h1>less<h2>")
 
+// Vue
+import Vue from 'vue'
+
+const app = new Vue({
+    el: '#app',
+    data: {
+        message: 'Hello Webpack'
+    }
+})

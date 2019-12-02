@@ -16,7 +16,9 @@
     "url-loader": "^2.3.0",
     "webpack": "^3.6.0"
   },
-  "dependencies": {},
+  "dependencies": {
+    "vue": "^2.6.10"
+  },
   "author": "",
   "license": "ISC"
 }
