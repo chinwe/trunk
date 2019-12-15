@@ -1,11 +1,13 @@
 const path = require('path')
+const webpack = require('webpack')
+const HtmlWebpackPlugin = require('html-webpack-plugin')
+const uglifyJsPlugin = require('uglifyjs-webpack-plugin')
 
 module.exports = {
     entry: './src/main.js',
     output: {
         path:  path.resolve(__dirname) + '/dist',
-        filename: 'bundle.js',
-        publicPath: 'dist/'
+        filename: 'bundle.js'
     },
     module: {
         rules: [
@@ -35,5 +37,12 @@ module.exports = {
         alias: {
             "vue$": 'vue/dist/vue.esm.js'
         }
-    }
+    },
+    plugins: [
+        new webpack.BannerPlugin("all right by mzx"),
+        new HtmlWebpackPlugin({
+            template: 'index.html'
+        }),
+        new uglifyJsPlugin()
+    ]
 }
