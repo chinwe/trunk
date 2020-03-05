@@ -45,3 +45,6 @@ web/webpack/start/dist/bundle.js
 
 target/
 Cargo.lock
+
+.classpath
+*.class
