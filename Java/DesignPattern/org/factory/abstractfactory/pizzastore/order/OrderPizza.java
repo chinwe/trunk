@@ -1,16 +1,15 @@
-package org.factory.factorymethod.pizzastore.order;
+package org.factory.abstractfactory.pizzastore.order;
 
 import java.util.Scanner;
 
-import org.factory.factorymethod.pizzastore.pizza.Pizza;
+import org.factory.abstractfactory.pizzastore.pizza.Pizza;
 
-
-public abstract class OrderPizza {
+public class OrderPizza {
 	
-	abstract Pizza creatPizza(String orderType);
-
-	public OrderPizza() {
-		
+	AbstractFactory factory;
+	
+	public void setFactory(AbstractFactory factory) {
+		this.factory = factory;
 		String orderType;
 		do {
 			orderType = getType();
@@ -19,7 +18,7 @@ public abstract class OrderPizza {
 				break;
 			}
 			
-			Pizza pizza = creatPizza(orderType);
+			Pizza pizza = this.factory.createPizza(orderType);
 			
 			if (pizza != null) {
 				pizza.prepare();

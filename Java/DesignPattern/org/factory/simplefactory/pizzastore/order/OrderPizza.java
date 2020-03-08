@@ -12,6 +12,10 @@ public class OrderPizza {
 		do {
 			orderType = getType();
 			
+			if (orderType.equals("q")) {
+				break;
+			}
+			
 			Pizza pizza = simpleFactory.createPizza(orderType);
 			
 			if (pizza != null) {
@@ -24,7 +28,7 @@ public class OrderPizza {
 			} else {
 				System.out.println("Unknown pizza type.");
 			}
-		} while (!orderType.equals("q"));
+		} while (true);
 	}
 
 	private String getType() {
