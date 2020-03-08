@@ -1,8 +1,8 @@
-package org.factory.factorymethod.order;
+package org.factory.factorymethod.pizzastore.order;
 
 import java.util.Scanner;
 
-import org.factory.factorymethod.pizza.Pizza;
+import org.factory.factorymethod.pizzastore.pizza.Pizza;
 
 
 public abstract class OrderPizza {

@@ -1,4 +1,4 @@
-package org.factory.factorymethod.pizza;
+package org.factory.factorymethod.pizzastore.pizza;
 
 public class BJCheesePizza extends Pizza {
 
