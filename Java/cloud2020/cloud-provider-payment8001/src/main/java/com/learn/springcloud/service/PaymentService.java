@@ -1,8 +1,7 @@
 package com.learn.springcloud.service;
 
-import com.learn.springcloud.entities.Payment;
 import org.apache.ibatis.annotations.Param;
-import org.springframework.context.annotation.Bean;
+import com.learn.springcloud.entities.Payment;
 
 public interface PaymentService {
 
