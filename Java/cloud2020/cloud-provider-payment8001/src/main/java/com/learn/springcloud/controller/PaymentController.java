@@ -20,7 +20,7 @@ public class PaymentController {
         int result = paymentService.create(payment);
         //Log.info("paymentService.create return " + result);
         if (result > 0) {
-            return new CommonResult(200, "ok", result);
+            return new CommonResult(200, "ok", payment);
         } else {
             return new CommonResult(444, "Failed to insert.");
         }

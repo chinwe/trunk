@@ -5,13 +5,16 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@AllArgsConstructor
-@NoArgsConstructor
+//@AllArgsConstructor
+//@NoArgsConstructor
 public class CommonResult<T> {
 
-    private final Integer code;
-    private final String message;
+    private Integer code;
+    private String message;
     private T data = null;
+
+    public CommonResult() {
+    }
 
     public CommonResult(Integer code, String message) {
         this.code = code;
