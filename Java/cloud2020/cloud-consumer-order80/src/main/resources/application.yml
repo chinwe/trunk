@@ -1,2 +1,16 @@
 server:
   port: 80
+
+spring:
+  application:
+    name: cloud-order-service
+
+eureka:
+  client:
+    # 注册
+    register-with-eureka: true
+    # 集群需要
+    fentch-registry: true
+    # 服务url 注册和查询依赖
+    service-url:
+      defaultZone: http://localhost:7001/eureka
