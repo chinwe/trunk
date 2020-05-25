@@ -1,4 +1,4 @@
-package springcloud.controller;
+package org.learn.springcloud.controller;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,8 +16,8 @@ public class OrderConsulController {
     @Resource
     private RestTemplate restTemplate;
 
-    @GetMapping(value = "consumer/payment/zk")
+    @GetMapping(value = "consumer/payment/consul")
     public String paymentInfo() {
-        return restTemplate.getForObject(PAYMENT_URL + "/payment/zk", String.class);
+        return restTemplate.getForObject(PAYMENT_URL + "/payment/consul", String.class);
     }
 }
