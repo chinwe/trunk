@@ -39,4 +39,9 @@ public class PaymentController {
             return new CommonResult(404, "No result.");
         }
     }
+
+    @GetMapping(value = "payment/lb")
+    public String paymentLb() {
+        return serverPort;
+    }
 }
