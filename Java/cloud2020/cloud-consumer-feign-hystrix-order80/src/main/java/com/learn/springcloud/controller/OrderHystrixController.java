@@ -1,5 +1,6 @@
 package com.learn.springcloud.controller;
 
+import cn.hutool.core.util.IdUtil;
 import com.learn.springcloud.entities.CommonResult;
 import com.learn.springcloud.entities.Payment;
 import com.learn.springcloud.service.IPaymentHystrixService;
@@ -37,6 +38,7 @@ public class OrderHystrixController {
         return paymentHystrixService.paymentInfoTimeout(id);
     }
 
+    // 服务降级
     public String paymentInfoTimeoutFallback(Integer id) {
         return "Thread" + Thread.currentThread().getName() + " 80 paymentInfoTimeout, id: " + id + ". fallback :(";
     }

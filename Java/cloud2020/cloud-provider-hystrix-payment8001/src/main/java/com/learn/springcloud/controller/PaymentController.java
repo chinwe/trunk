@@ -30,4 +30,11 @@ public class PaymentController {
         String result = paymentService.paymentInfoTimeout(id);
         return result;
     }
+
+    @GetMapping("/payment/hystrix/circuit/{id}")
+    public String paymentCircuitBreaker(@PathVariable("id") Integer id) {
+        String result = paymentService.paymentCircuitBreaker(id);
+        return result;
+    }
+
 }
