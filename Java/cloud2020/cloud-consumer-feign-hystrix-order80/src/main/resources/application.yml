@@ -1,14 +1,10 @@
 server:
-  port: 7001
+  port: 80
 
 eureka:
-  instance:
-    hostname: eureka7001.com
   client:
-    # 自身不用注册
+    # 注册
     register-with-eureka: false
-    # 自身就是服务端
-    fentch-registry: false
     # 服务url 注册和查询依赖
     service-url:
       defaultZone: http://eureka7001.com:7001/eureka
