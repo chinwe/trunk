@@ -1,0 +1,27 @@
+server:
+  port: 9527
+
+spring:
+  application:
+    name: cloud-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: payment-routh
+          uri: http://localhost:8001
+          predicates:
+            - Path=/payment/get/**
+
+        - id: payment-routh2
+          uri: http://localhost:8001
+          predicates:
+            - Path=/payment/lb/**
+eureka:
+  client:
+    # 注册
+    register-with-eureka: true
+    # 集群需要
+    fentch-registry: true
+    # 服务url 注册和查询依赖
+    service-url:
+      defaultZone: http://eureka7001.com:7001/eureka
