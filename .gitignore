@@ -50,3 +50,10 @@ Cargo.lock
 *.class
 .idea/
 out/
+
+.vs
+ipch
+*.VC.db
+*.VC.opendb
+Debug
+GeneratedFiles
