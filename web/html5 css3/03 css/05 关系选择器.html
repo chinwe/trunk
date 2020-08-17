@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+
+    <style>
+        /* 子元素选择器 */
+        div > span {
+            color: orange;
+        }
+
+        /* 后代选择器 */
+        div span {
+            color: skyblue;
+        }
+
+        /* 选择下一个兄弟 */
+        div + span {
+            color: red;
+        }
+
+        /* 选择所有兄弟 */
+        p ~ span {
+            color: blue;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        我是一个div
+
+        <p>
+            我的div中的p元素
+            <span>我是p元素中的span</span>
+        </p>
+        <span>我是div中的span元素</span>
+    </div>
+
+    <span>我是div外的span</span>
+</body>
+</html>

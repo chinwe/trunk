@@ -1,0 +1,15 @@
+
+/*
+    CSS的基本语法：
+    选择器 声明块
+
+*/
+body {
+    background-color: #0f0e0e;
+}
+
+p {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 32px;
+    /* border-bottom: 1px solid rgba(255, 255, 255, 0.7); */
+}

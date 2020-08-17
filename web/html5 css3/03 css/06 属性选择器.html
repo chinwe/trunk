@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+
+    <style>
+        /*
+            [属性名]
+            [属性名=属性值]
+            [属性名^=属性值] 选择属性值以指定值开头的元素
+            [属性名$=属性值] 选择属性值以指定值结尾的元素
+            [属性名*=属性值] 选择属性值中含有指定值的元素
+        */
+        [title *= abc] {
+            color: orange;
+        }
+    </style>
+</head>
+<body>
+    <h1>滕王阁</h1>
+    <p title="abc">物华天宝，人杰地灵</p>
+    <p>落霞与孤鹜齐飞，秋水共长天一色</p>
+    <p>物华天宝，人杰地灵</p>
+    <p>落霞与孤鹜齐飞，秋水共长天一色</p>
+    <p>物华天宝，人杰地灵</p>
+    <p>落霞与孤鹜齐飞，秋水共长天一色</p>
+</body>
+</html>
