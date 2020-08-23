@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+
+    <style>
+        /*
+            选择器的权重
+                内联样式 > id选择器 > 类和伪类选择器 > 元素选择器 > 通配选择器 > 继承样式
+        */
+        div {
+            color: yellow;
+        }
+
+        .red {
+            color: red;
+        }
+
+        #box1 {
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div id="box1" class="red">我是一个div</div>
+</body>
+</html>
