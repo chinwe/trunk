@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+
+    <style>
+        /*
+            行内元素不支持设置宽度和高度
+            行内元素可以设置padding、border、margin，但是垂直方向不会影响页面的布局
+        */
+        .s1 {
+            background-color: yellow;
+
+            border: 2px solid red;
+        }
+
+        .box1 {
+            width: 200px;
+            height: 200px;
+            background-color: #bfa;
+        }
+
+        /*
+            diaplay 用来设置元素显示的类型
+        */
+        a {
+            display: block;
+            width: 100px;
+            height: 100px;
+            background-color: orange;
+        }
+    </style>
+</head>
+<body>
+    
+    <a href="">我是超链接</a>
+
+    <span class="s1">我是span</span>
+
+    <div class="box1"></div>
+</body>
+</html>
