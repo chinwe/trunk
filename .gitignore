@@ -57,3 +57,8 @@ ipch
 *.VC.opendb
 Debug
 GeneratedFiles
+
+# CMake
+CMakeFiles/
+build/
+CMakeCache.txt
