@@ -3,7 +3,17 @@
 #include <iosfwd>
 #include <string>
 
-class Message {
+#ifdef _WIN32
+  #ifdef MESSAGE_API_DEFINE
+    #define MESSAGE_EXPORT _declspec(dllexport)
+  #else
+    #define MESSAGE_EXPORT _declspec(dllimport)
+  #endif
+#else 
+    #define MESSAGE_EXPORT 
+#endif
+
+class MESSAGE_EXPORT Message {
 public:
   Message(const std::string &m) : message_(m) {}
 
