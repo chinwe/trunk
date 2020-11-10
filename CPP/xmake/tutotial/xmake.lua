@@ -1,11 +1,9 @@
-
-target("mymathlib")
-    -- shared or static
-    set_kind("shared")
-    add_files("mymathlib/*.cpp")
+add_rules("mode.debug", "mode.release")
 
 target("tutorial")
     set_kind("binary")
-    add_files("src/*.cpp")
+    add_deps("mymath")
+    add_files("src/main.cpp")
     add_includedirs("mymathlib")
-    add_deps("mymathlib")
+
+add_subdirs("mymathlib")

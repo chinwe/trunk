@@ -1,5 +1,5 @@
 #include <iostream>
-#include "mymath.hpp"
+#include "mymath.h"
 
 int main(void)
 {
