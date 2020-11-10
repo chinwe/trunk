@@ -4,6 +4,20 @@ cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 # 项目名称和语言
 project(hello LANGUAGES CXX)
 
+# 检测操作系统
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(STATUS "Configuring on/for Linux")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    message(STATUS "Configuring on/for Windows")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    message(STATUS "Configuring on/for macOS")
+else()
+    message(STATUS "Configuring on/for ${CMAKE_SYSTEM_NAME}")
+endif()
+
+# 处理器
+message(STATUS "ARCHITECTURE=${CMAKE_HOST_SYSTEM_PROCESSOR}")
+
 # 添加obj
 add_library(message_objs OBJECT
     Message.hpp
