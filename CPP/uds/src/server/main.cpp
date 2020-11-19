@@ -5,59 +5,69 @@
 #include <stdlib.h>
 #include <cstring>
 
-char *socket_path = "ipc.socket";
+const char* socket_path = "ipc.socket";
 
-int main(int argc, char *argv[]) {
-  struct sockaddr_un addr;
-  char buf[100];
-  int fd,cl,rc;
+int main(int argc, char *argv[])
+{
+  // 命令行参数指定路径
+  if (argc > 1)
+  {
+    socket_path = argv[1];
+  }
 
-  if (argc > 1) socket_path=argv[1];
-
-  if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+  // 创建Unix Domain Socket
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (-1 == fd)
+  {
     perror("socket error");
     exit(-1);
   }
 
+  // bind
+  struct sockaddr_un addr;
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  if (*socket_path == '\0') {
-    *addr.sun_path = '\0';
-    strncpy(addr.sun_path+1, socket_path+1, sizeof(addr.sun_path)-2);
-  } else {
-    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
-    unlink(socket_path);
-  }
-
-  if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+  strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+  unlink(socket_path);
+  if (-1 == bind(fd, (struct sockaddr *)&addr, sizeof(addr)))
+  {
     perror("bind error");
     exit(-1);
   }
 
-  if (listen(fd, 5) == -1) {
+  // listen
+  if (-1 == listen(fd, 1000))
+  {
     perror("listen error");
     exit(-1);
   }
 
-  while (1) {
-    if ( (cl = accept(fd, NULL, NULL)) == -1) {
+  char buf[1024] = { 0 };
+  while (true)
+  {
+    int cl = accept(fd, NULL, NULL);
+    if (-1 == cl)
+    {
       perror("accept error");
       continue;
     }
-
-    while ( (rc=read(cl,buf,sizeof(buf))) > 0) {
+    
+    int rc = 0;
+    while (read(cl, buf, sizeof(buf)) > 0)
+    {
       printf("read %u bytes: %.*s\n", rc, rc, buf);
     }
-    if (rc == -1) {
+    if (-1 == rc)
+    {
       perror("read");
       exit(-1);
     }
-    else if (rc == 0) {
+    else if (0 == rc)
+    {
       printf("EOF\n");
       close(cl);
     }
   }
-
 
   return 0;
 }
