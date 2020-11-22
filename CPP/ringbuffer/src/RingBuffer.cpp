@@ -4,7 +4,7 @@
 RingBuffer::RingBuffer(int init_capacity, int max_capacity)
     : capacity_(init_capacity),
     max_capacity_(max_capacity),
-    ptr_buffer_(new char[capacity_]{ 0 })
+    ptr_buffer_(new char[capacity_.load()]{ 0 })
 {
 
 }

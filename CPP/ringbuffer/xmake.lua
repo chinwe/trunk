@@ -1,4 +1,5 @@
 add_rules("mode.debug", "mode.release")
+set_languages("cxx11")
 
 target("ringbuffer")
     set_kind("static")
