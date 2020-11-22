@@ -10,16 +10,16 @@ public:
     ~RingBuffer();
 
     // 缓冲区容量
-    int BufferCapacity() const;
+    size_t BufferCapacity() const;
 
     // 是否可读
     bool ReadAvailable() const;
 
     // 是否可写
-    bool WriteAvailable(size_t write_len) const;
+    bool WriteAvailable(size_t write_len);
 
     // 实际数据大小
-    int BufferSize() const;
+    size_t BufferSize() const;
 
     // 读取
     size_t Read(char* ptr_out, size_t out_size);
@@ -32,7 +32,7 @@ public:
 
 private:
     // 扩容
-    bool CapacityExpansion();
+    bool CapacityExpansion(size_t write_len);
 
 private:
     std::atomic<size_t> capacity_{ 0 };
