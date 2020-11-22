@@ -28,7 +28,7 @@ void ReadThread()
             g_total_read_size += read_size;
 
             //std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        } while (0 == read_size);
+        } while (0 == read_size && !g_exit.load());
     }
     
 }
@@ -47,7 +47,7 @@ void WriteThread()
             g_total_write_size += write_size;
 
             //std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        } while (0 == write_size);
+        } while (0 == write_size && !g_exit.load());
     }
 }
 
