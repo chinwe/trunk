@@ -1,4 +1,4 @@
-package org.learn.springcloud.controller;
+package com.learn.springcloud.controller;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
