@@ -16,6 +16,6 @@ public class ReceiveMessageListenerController {
 
     @StreamListener(Sink.INPUT)
     public void input(Message<String> message) {
-        System.out.println(port + " Consumer 1. Receive message :" + message.getPayload());
+        System.out.println(port + " Consumer 2. Receive message :" + message.getPayload());
     }
 }
