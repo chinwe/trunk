@@ -11,6 +11,7 @@ spring:
       config:
         server-addr: localhost:8848 #配置Nacos地址
         file-extension: yaml
+        group: DEFAULT_GROUP
 
 
 # ${prefix}-${spring.profile.active}.${file-extension}
