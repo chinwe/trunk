@@ -9,10 +9,12 @@
 using namespace std::chrono_literals;
 using namespace std;
 
+using suspend_always = std::experimental::suspend_always;
+
 Resumeable HelloCoroutine()
 {
     std::cout << "Hello" << std::endl;
-    co_await std::suspend_always{};
+    co_await suspend_always{};
     std::cout << "Coroutine" << std::endl;
 }
 
@@ -64,8 +66,13 @@ void TestLazyValue()
 
 int main(int argc, char** argv)
 {
+    TestIntGenerator();
+
     TestLazyValue();
 
+#ifdef __WIN32
     system("pause");
+#endif
+
     return 0;
 }
