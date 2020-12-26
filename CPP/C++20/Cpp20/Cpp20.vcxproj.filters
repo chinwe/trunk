@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="FiboGenerator.h" />
+    <ClInclude Include="Generator.h" />
+    <ClInclude Include="Resumeable.h" />
+    <ClInclude Include="Awaitee.h" />
+    <ClInclude Include="BaseCoroutine.h" />
+    <ClInclude Include="Lazy.h" />
+  </ItemGroup>
+</Project>
