@@ -6,9 +6,9 @@
   <ItemGroup>
     <ClInclude Include="FiboGenerator.h" />
     <ClInclude Include="Generator.h" />
-    <ClInclude Include="Resumeable.h" />
-    <ClInclude Include="Awaitee.h" />
     <ClInclude Include="BaseCoroutine.h" />
     <ClInclude Include="Lazy.h" />
+    <ClInclude Include="Resumable.h" />
+    <ClInclude Include="Awaiter.h" />
   </ItemGroup>
 </Project>

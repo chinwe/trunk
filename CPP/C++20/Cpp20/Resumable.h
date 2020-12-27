@@ -1,7 +1,7 @@
 #pragma once
 #include "BaseCoroutine.h"
 
-struct Resumeable : CBaseCoroutine<Resumeable>
+struct Resumable : CBaseCoroutine<Resumable>
 {
     struct promise_type : base_promise_type<promise_type>
     {
@@ -10,7 +10,7 @@ struct Resumeable : CBaseCoroutine<Resumeable>
         }
     };
 
-    Resumeable(coroutine_handle<promise_type> handle)
+    Resumable(coroutine_handle<promise_type> handle)
         : co_handle_(handle)
     {
     }

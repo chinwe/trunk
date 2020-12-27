@@ -2,14 +2,14 @@
 #include <thread>
 #include "FiboGenerator.h"
 #include "Generator.h"
-#include "Resumeable.h"
-#include "Awaitee.h"
+#include "Resumable.h"
+#include "Awaiter.h"
 #include "Lazy.h"
 
 using namespace std::chrono_literals;
 using namespace std;
 
-Resumeable HelloCoroutine()
+Resumable HelloCoroutine()
 {
     std::cout << "Hello" << std::endl;
     co_await suspend_always{};
@@ -22,9 +22,9 @@ void TestHelloCoroutine()
     r.Resume();
 }
 
-Resumeable UseAwaitee()
+Resumable UseAwaiter()
 {
-    Awaitee t([]()
+    Awaiter t([]()
     {
         std::this_thread::sleep_for(4s);
         std::cout << "task finish." << std::endl;
@@ -32,9 +32,9 @@ Resumeable UseAwaitee()
     co_await t;
 }
 
-void TestAwaitee()
+void TestAwaiter()
 {
-    auto r = UseAwaitee();
+    auto r = UseAwaiter();
     r.Resume();
 }
 
@@ -64,6 +64,10 @@ void TestLazyValue()
 
 int main(int argc, char** argv)
 {
+    TestHelloCoroutine();
+
+    TestAwaiter();
+
     TestIntGenerator();
 
     TestLazyValue();

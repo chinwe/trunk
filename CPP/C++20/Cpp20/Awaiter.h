@@ -7,9 +7,9 @@ using namespace std::experimental;
 #endif
 #include <functional>
 
-struct Awaitee
+struct Awaiter
 {
-    Awaitee(std::function<void()> f_in)
+    Awaiter(std::function<void()> f_in)
         : f(f_in)
     {
     }

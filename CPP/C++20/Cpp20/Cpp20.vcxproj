@@ -143,12 +143,12 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Awaitee.h" />
+    <ClInclude Include="Awaiter.h" />
     <ClInclude Include="BaseCoroutine.h" />
     <ClInclude Include="FiboGenerator.h" />
     <ClInclude Include="Generator.h" />
     <ClInclude Include="Lazy.h" />
-    <ClInclude Include="Resumeable.h" />
+    <ClInclude Include="Resumable.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
