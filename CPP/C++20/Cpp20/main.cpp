@@ -65,7 +65,6 @@ void TestLazyValue()
 
 experimental::generator<int> GetSequenceGenerator(int start = 0, int stop = 10)
 {
-    int i = start;
     for (int i = start; i < stop; ++i)
     {
         co_yield i;
