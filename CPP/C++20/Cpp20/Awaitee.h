@@ -1,6 +1,10 @@
 #pragma once
-
+#ifdef __cpp_impl_coroutine
+#include <coroutine>
+#else
 #include <experimental/coroutine>
+using namespace std::experimental;
+#endif
 #include <functional>
 
 struct Awaitee
@@ -15,7 +19,7 @@ struct Awaitee
         return false;
     }
 
-    constexpr void await_suspend(std::experimental::coroutine_handle<>) const noexcept
+    constexpr void await_suspend(coroutine_handle<>) const noexcept
     {
     }
 

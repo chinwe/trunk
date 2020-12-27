@@ -1,7 +1,12 @@
 #pragma once
 
-// #include <coroutine>
+#ifdef __cpp_impl_coroutine
+#include <coroutine>
+using namespace std;
+#else
 #include <experimental/coroutine>
+using namespace std::experimental;
+#endif
 
 template<typename Future>
 class CBaseCoroutine
@@ -16,11 +21,8 @@ public:
     }
 
 protected:
-    using suspend_never = std::experimental::suspend_never;
-    using suspend_always = std::experimental::suspend_always;
-
     template<typename... U>
-    using coroutine_handle = std::experimental::coroutine_handle<U...>;
+    using handle_type = coroutine_handle<U...>;
 
     template<typename Promise>
     struct base_promise_type
@@ -35,7 +37,7 @@ protected:
         }
         Future get_return_object()
         {
-            return coroutine_handle<Promise>::from_promise(static_cast<Promise&>(*this));
+            return handle_type<Promise>::from_promise(static_cast<Promise&>(*this));
         }
         void unhandled_exception()
         {

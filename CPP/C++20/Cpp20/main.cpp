@@ -9,8 +9,6 @@
 using namespace std::chrono_literals;
 using namespace std;
 
-using suspend_always = std::experimental::suspend_always;
-
 Resumeable HelloCoroutine()
 {
     std::cout << "Hello" << std::endl;
@@ -70,7 +68,7 @@ int main(int argc, char** argv)
 
     TestLazyValue();
 
-#ifdef __WIN32
+#ifdef __WIN
     system("pause");
 #endif
 
