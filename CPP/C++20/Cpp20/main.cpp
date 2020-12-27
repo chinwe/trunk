@@ -5,6 +5,7 @@
 #include "Resumable.h"
 #include "Awaiter.h"
 #include "Lazy.h"
+#include <experimental/generator>
 
 using namespace std::chrono_literals;
 using namespace std;
@@ -62,6 +63,25 @@ void TestLazyValue()
     std::cout << lazy.Value() << std::endl;
 }
 
+experimental::generator<int> GetSequenceGenerator(int start = 0, int stop = 10)
+{
+    int i = start;
+    for (int i = start; i < stop; ++i)
+    {
+        co_yield i;
+    }
+}
+
+void TestGetSequenceGenerator()
+{
+    auto gen = GetSequenceGenerator();
+
+    for (const auto& value : gen)
+    {
+        std::cout << value << std::endl;
+    }
+}
+
 int main(int argc, char** argv)
 {
     TestHelloCoroutine();
@@ -71,6 +91,8 @@ int main(int argc, char** argv)
     TestIntGenerator();
 
     TestLazyValue();
+
+    TestGetSequenceGenerator();
 
 #ifdef __WIN
     system("pause");
