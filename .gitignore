@@ -66,3 +66,5 @@ CMakeCache.txt
 # xmake
 .xmake/
 vsxmake2019/
+
+*.exe
