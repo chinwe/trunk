@@ -4,6 +4,7 @@ package sharingobjects;
  * 在没有同步的情况下共享变量
  *
  * 只要数据需要被跨线程共享，就进行恰当的同步
+ * 加锁可以保证可见性与原子性；volatile变量只能保证可见性
  *
  * @author chinwe
  * 2021/10/1
