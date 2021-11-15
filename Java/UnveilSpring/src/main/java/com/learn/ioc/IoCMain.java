@@ -1,7 +1,11 @@
-package ioc;
+package com.learn.ioc;
 
+import com.learn.config.AppConfig;
+import com.learn.service.UserService;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 
 /**
@@ -19,6 +23,7 @@ public class IoCMain {
         System.out.println(bean);
 
         // ApplicationContext
-
+        ApplicationContext applicationContext = new AnnotationConfigApplicationContext(AppConfig.class);
+        final UserService userService = applicationContext.getBean(UserService.class);
     }
 }
