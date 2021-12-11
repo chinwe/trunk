@@ -6,6 +6,8 @@ import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.core.io.ResourceLoader;
 
 
 /**
@@ -25,5 +27,7 @@ public class IoCMain {
         // ApplicationContext
         ApplicationContext applicationContext = new AnnotationConfigApplicationContext(AppConfig.class);
         final UserService userService = applicationContext.getBean(UserService.class);
+
+        ResourceLoader resourceLoader = new DefaultResourceLoader();
     }
 }

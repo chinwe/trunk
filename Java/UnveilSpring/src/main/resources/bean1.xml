@@ -5,6 +5,6 @@
        http://www.springframework.org/schema/beans/spring-beans-2.5.xsd">
 
     <!-- 配置User对象创建 -->
-    <bean id="user" class="com.learn.entity.User"></bean>
+    <bean id="user" class="com.learn.entity.User"/>
 
 </beans>
