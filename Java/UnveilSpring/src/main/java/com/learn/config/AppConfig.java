@@ -8,6 +8,6 @@ import org.springframework.context.annotation.Configuration;
  * 2021/11/14
  */
 @Configuration
-@ComponentScan("com.learn")
+@ComponentScan(basePackages = "com.learn")
 public class AppConfig {
 }
