@@ -2,6 +2,7 @@ package com.learn.ioc;
 
 import com.learn.config.AppConfig;
 import com.learn.config.ApplicationContextHolder;
+import com.learn.service.MultiInstance;
 import com.learn.service.UserService;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
@@ -32,5 +33,10 @@ public class IoCMain {
         final UserService userService1 = ApplicationContextHolder.getBean(UserService.class);
 
         ResourceLoader resourceLoader = new DefaultResourceLoader();
+
+        final MultiInstance instance1 = ApplicationContextHolder.getBean(MultiInstance.class);
+        final MultiInstance instance2 = ApplicationContextHolder.getBean(MultiInstance.class);
+        System.out.println(instance1);
+        System.out.println(instance2);
     }
 }
