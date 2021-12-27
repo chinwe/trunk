@@ -2,8 +2,10 @@ package com.learn.ioc;
 
 import com.learn.config.AppConfig;
 import com.learn.config.ApplicationContextHolder;
+import com.learn.service.ActionRouteService;
 import com.learn.service.MultiInstance;
 import com.learn.service.UserService;
+import com.learn.service.impl.ActionOne;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.context.ApplicationContext;
@@ -38,5 +40,8 @@ public class IoCMain {
         final MultiInstance instance2 = ApplicationContextHolder.getBean(MultiInstance.class);
         System.out.println(instance1);
         System.out.println(instance2);
+
+        final ActionRouteService actionRouteService = ApplicationContextHolder.getBean(ActionRouteService.class);
+        actionRouteService.doAction(ActionOne.class.getName());
     }
 }
