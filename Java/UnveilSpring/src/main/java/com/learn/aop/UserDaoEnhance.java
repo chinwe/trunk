@@ -1,7 +1,7 @@
 package com.learn.aop;
 
-import org.aspectj.lang.annotation.Aspect;
-import org.aspectj.lang.annotation.Before;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.*;
 import org.springframework.stereotype.Component;
 
 /**
@@ -12,8 +12,36 @@ import org.springframework.stereotype.Component;
 @Aspect
 public class UserDaoEnhance {
 
-    @Before(value = "execution(* com.learn.aop.impl.UserDaoImpl.add(..))")
+    @Pointcut("execution(* com.learn.aop.impl.UserDaoImpl.add(..))")
+    private void pointcut() {
+    }
+
+    @Before(value = "pointcut()")
     public void before() {
-        System.out.println("before add");
+        System.out.println("Before Advice");
+    }
+
+    @AfterReturning(pointcut = "pointcut()",
+        returning = "retVal")
+    public void afterAddReturning(int retVal) {
+        System.out.println("After Returning Advice");
+    }
+
+    @AfterThrowing("pointcut()")
+    public void doRecoveryActions() {
+        System.out.println("After Throwing Advice");
+    }
+
+    @After("pointcut()")
+    public void doReleaseLock() {
+        System.out.println("After (Finally) Advice");
+    }
+
+    @Around("pointcut()")
+    public Object doBasicProfiling(ProceedingJoinPoint pjp) throws Throwable {
+        // start stopwatch
+        Object retVal = pjp.proceed();
+        // stop stopwatch
+        return retVal;
     }
 }
