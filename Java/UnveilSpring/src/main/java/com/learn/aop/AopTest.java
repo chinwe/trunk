@@ -3,7 +3,7 @@ package com.learn.aop;
 import com.learn.aop.impl.UserDaoImpl;
 import com.learn.config.AppConfig;
 import com.learn.entity.User;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
