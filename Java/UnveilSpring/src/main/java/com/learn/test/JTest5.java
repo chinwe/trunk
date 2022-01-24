@@ -6,10 +6,10 @@ import com.learn.config.ApplicationContextHolder;
 import com.learn.service.WindowsOnlyService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * @author chinwe
@@ -21,6 +21,9 @@ public class JTest5 {
     @Autowired
     private IUserDao userDao;
 
+    @Value("${config.user.name}")
+    private String name;
+
     @Test
     public void test() {
         assertNotNull(userDao);
@@ -30,5 +33,11 @@ public class JTest5 {
     public void testConditional() {
         WindowsOnlyService windowsOnlyService = ApplicationContextHolder.getBean(WindowsOnlyService.class);
         assertTrue(windowsOnlyService.isWindows());
+    }
+
+    @Test
+    public void testValue() {
+        System.out.println(name);
+        assertFalse(name.isEmpty());
     }
 }

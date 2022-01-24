@@ -4,10 +4,7 @@ import com.learn.service.impl.ActionOne;
 import com.learn.service.impl.ActionTwo;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.context.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -20,6 +17,7 @@ import java.util.Map;
 @ComponentScan(basePackages = "com.learn")
 @EnableAspectJAutoProxy
 @EnableAutoConfiguration
+@PropertySource("classpath:/config.properties")
 public class AppConfig {
 
     @Bean(name="actServiceMap")
