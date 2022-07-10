@@ -1,4 +1,4 @@
-package com.learn.security.service;
+package com.learn.security.service.impl;
 
 import com.learn.security.repository.UserRepository;
 import org.springframework.security.core.GrantedAuthority;
@@ -33,6 +33,8 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         }
 
         List<GrantedAuthority> grantedAuthorities = AuthorityUtils.commaSeparatedStringToAuthorityList("role");
+
+
         return new User(optionalUser.get().getName(), new BCryptPasswordEncoder().encode(optionalUser.get().getPassword()), grantedAuthorities);
     }
 }
