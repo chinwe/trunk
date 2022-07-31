@@ -68,3 +68,6 @@ CMakeCache.txt
 vsxmake2019/
 
 *.exe
+
+# python
+*.pyc
