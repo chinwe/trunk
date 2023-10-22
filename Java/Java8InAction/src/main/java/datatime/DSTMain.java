@@ -48,5 +48,13 @@ public class DSTMain {
         // Epoch Milli
         System.out.println(Instant.now().toEpochMilli());
         System.out.println(System.currentTimeMillis());
+
+        // America/Sao_Paulo
+        final OffsetDateTime isoBrasilia = OffsetDateTime.ofInstant(Instant.now(), ZoneId.of("America/Sao_Paulo"));
+        System.out.println("Brasilia Time:   " + isoLosAngeles);
+        System.out.println(TimeZone.getTimeZone("America/Sao_Paulo"));
+
+        // tzdb
+        System.out.println("tzdb version:   " + java.time.zone.ZoneRulesProvider.getVersions("UTC").lastEntry().getKey());
     }
 }
