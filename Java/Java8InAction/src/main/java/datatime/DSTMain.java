@@ -51,7 +51,7 @@ public class DSTMain {
 
         // America/Sao_Paulo
         final OffsetDateTime isoBrasilia = OffsetDateTime.ofInstant(Instant.now(), ZoneId.of("America/Sao_Paulo"));
-        System.out.println("Brasilia Time:   " + isoLosAngeles);
+        System.out.println("Brasilia Time:   " + isoBrasilia);
         System.out.println(TimeZone.getTimeZone("America/Sao_Paulo"));
 
         // tzdb
