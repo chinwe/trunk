@@ -1,7 +1,6 @@
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.time.Duration;
 
 /**
  * Java 9 增加了 ProcessHandle 接口，可以对原生进程进行管理，尤其适合于管理长时间运行的进程。
