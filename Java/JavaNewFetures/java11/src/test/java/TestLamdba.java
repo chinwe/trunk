@@ -1,7 +1,5 @@
 import org.junit.jupiter.api.Test;
 
-import java.util.Comparator;
-import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
