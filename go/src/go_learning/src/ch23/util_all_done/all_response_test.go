@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func runTask(id int) string {
@@ -34,4 +36,11 @@ func TestFirstResponse(t *testing.T) {
 	t.Log(AllResponse())
 	time.Sleep(1 * time.Second)
 	t.Log(runtime.NumGoroutine())
+}
+
+func TestSomething(t *testing.T) {
+	var a string = "Hello"
+	var b string = "Hello"
+
+	assert.Equal(t, a, b, "The two words should be the same.")
 }
