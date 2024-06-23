@@ -8,18 +8,49 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
-func main() {
+type ProxyConfiguration struct {
+	Endpoints []EndpointConfiguration `yaml:"endpoints"`
+}
 
-	allowMethods := map[string]bool{
-		"OPTIONS": true,
-		"HEAD":    true,
-		"GET":     true,
-		"POST":    true,
+type EndpointConfiguration struct {
+	Name          string            `yaml:"name"`
+	Url           string            `yaml:"url"`
+	ListenAddress string            `yaml:"listenAddress"`
+	AlowMethods   string            `yaml:"allowMethods"`
+	Headers       map[string]string `yaml:"headers"`
+}
+
+func main() {
+	yamlFile, err := os.ReadFile("config.yaml")
+	if err != nil {
+		log.Fatalf("无法读取 YAML 文件: %v", err)
 	}
 
-	targetURL, _ := url.Parse("https://backend-service")
+	var config ProxyConfiguration
+	err = yaml.Unmarshal(yamlFile, &config)
+	if err != nil {
+		log.Fatalf("无法解析 YAML 文件: %v", err)
+	}
+
+	c := make(chan bool, len(config.Endpoints))
+
+	for _, endpoint := range config.Endpoints {
+		go func() {
+			c <- newProxy(endpoint)
+		}()
+	}
+
+	<-c
+}
+
+func newProxy(endpoint EndpointConfiguration) bool {
+	targetURL, _ := url.Parse(endpoint.Url)
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
 	// 忽略目标服务器的TLS证书
@@ -43,42 +74,53 @@ func main() {
 		return nil
 	}
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Received an HTTP request")
+	server := &http.Server{
+		Addr: endpoint.ListenAddress,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("[%s]-> Received an HTTP request\n", endpoint.Name)
 
-		// 复制请求Body
-		bodyBytes, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.Fatal(err)
-		}
-		r.Body.Close() // 关闭原始请求Body
+			// 复制请求Body
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err != nil {
+				log.Fatal(err)
+			}
+			r.Body.Close() // 关闭原始请求Body
 
-		// 控制允许的方法
-		if _, allow := allowMethods[r.Method]; !allow {
-			w.WriteHeader(403)
-			return
-		}
+			// 控制允许的方法
+			if !strings.Contains(endpoint.AlowMethods, r.Method) {
+				w.WriteHeader(403)
+				return
+			}
 
-		if "OPTIONS" == r.Method {
-			// 解决跨域问题
-			w.Header().Add("Access-Control-Allow-Origin", "*")
-			w.Header().Add("Access-Control-Allow-Methods", "OPTIONS,HEAD,GET,POST")
-			w.Header().Add("Access-Control-Allow-Headers", "*")
-			w.Header().Add("Access-Control-Max-Age", "36000")
+			if r.Method == "OPTIONS" {
+				// 解决跨域问题
+				w.Header().Add("Access-Control-Allow-Origin", "*")
+				w.Header().Add("Access-Control-Allow-Methods", endpoint.AlowMethods)
+				w.Header().Add("Access-Control-Allow-Headers", "*")
+				w.Header().Add("Access-Control-Max-Age", "36000")
 
-			w.WriteHeader(200)
-			return
-		}
+				w.WriteHeader(200)
+				return
+			}
 
-		// 打印请求信息
-		log.Printf("-> RemoteAddr: %s, Method: %s, URL: %s, Request Body: %s\n", r.RemoteAddr, r.Method, r.URL.String(), string(bodyBytes))
+			// 添加自定义Header
+			for k, v := range endpoint.Headers {
+				r.Header.Add(k, v)
+			}
 
-		// 将请求Body写回去
-		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+			// 打印请求信息
+			log.Printf("[%s] -> RemoteAddr: %s, Method: %s, URL: %s, Request Body: %s\n", endpoint.Name, r.RemoteAddr, r.Method, r.URL.String(), string(bodyBytes))
 
-		// 将请求转发到目标服务器
-		proxy.ServeHTTP(w, r)
-	})
+			// 将请求Body写回去
+			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
-	log.Fatal(http.ListenAndServe(":30080", nil))
+			// 将请求转发到目标服务器
+			proxy.ServeHTTP(w, r)
+		}),
+	}
+
+	log.Printf("[%s] %s\n Listening...", endpoint.Name, endpoint.ListenAddress)
+	log.Fatal(server.ListenAndServe())
+
+	return false
 }

@@ -1,0 +1,13 @@
+endpoints:
+  - name: 1
+    url: https://xxx.com
+    listenAddress: :30079
+    allowMethods: OPTIONS,HEAD,GET,POST
+    headers:
+      Authorization: Basic zzz
+  - name: 2
+    url: https://xxx.com
+    listenAddress: :30080
+    allowMethods: OPTIONS,HEAD,GET,POST
+    headers:
+      Authorization: Basic zzz
