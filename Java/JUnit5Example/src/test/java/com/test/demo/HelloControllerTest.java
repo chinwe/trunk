@@ -1,5 +1,6 @@
 package com.test.demo;
 
+import com.test.demo.controller.HelloController;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
