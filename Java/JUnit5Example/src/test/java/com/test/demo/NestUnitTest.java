@@ -1,7 +1,9 @@
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+package com.test.demo;
+
+import org.junit.jupiter.api.*;
+import org.mockito.Mockito;
+
+import java.util.List;
 
 @DisplayName("内嵌测试类")
 public class NestUnitTest {
@@ -26,5 +28,18 @@ public class NestUnitTest {
         void test() {
          System.out.println("第二个内嵌测试类执行测试");
         }
+    }
+
+    @Test
+    void mockAndSpy() {
+        List<String> mockList = Mockito.mock(List.class);
+        // List<String> mockList = Mockito.spy(new ArrayList<>());
+        Mockito.when(mockList.size())
+                .thenReturn(100);
+
+        mockList.add("A");
+        mockList.add("B");
+        Assertions.assertEquals("A", mockList.get(0));
+        Assertions.assertEquals(100, mockList.size());
     }
 }
