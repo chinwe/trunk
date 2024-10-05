@@ -1,3 +1,5 @@
+package com.test.demo;
+
 import org.junit.jupiter.api.*;
 
 import java.time.Duration;
