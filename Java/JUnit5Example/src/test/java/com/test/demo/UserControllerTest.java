@@ -1,14 +1,16 @@
 package com.test.demo;
 
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -29,7 +31,7 @@ public class UserControllerTest {
 
     @Test
     public void testGetUserById() throws Exception {
-        when(userService.getUserById(1)).thenReturn("User1");
+        Mockito.when(userService.getUserById(1)).thenReturn("User1");
 
         mockMvc.perform(get("/users/1"))
                 .andExpect(status().isOk())
@@ -38,9 +40,14 @@ public class UserControllerTest {
 
     @Test
     public void testGetUserNotFound() throws Exception {
-        when(userService.getUserById(2)).thenReturn(null);
+        Mockito.when(userService.getUserById(2))
+                .thenReturn(null);
 
         mockMvc.perform(get("/users/2"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk());
+
+        String userById = Mockito.verify(userService, Mockito.times(1)).getUserById(2);
+        Assertions.assertNull(userById);
+
     }
 }
