@@ -3,6 +3,7 @@ package com.test.demo;
 import org.junit.jupiter.api.*;
 import org.mockito.Mockito;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @DisplayName("内嵌测试类")
@@ -32,14 +33,13 @@ public class NestUnitTest {
 
     @Test
     void mockAndSpy() {
-        List<String> mockList = Mockito.mock(List.class);
-        // List<String> mockList = Mockito.spy(new ArrayList<>());
-        Mockito.when(mockList.size())
-                .thenReturn(100);
-
+        List<String> mockList = Mockito.spy(new ArrayList<>());
         mockList.add("A");
         mockList.add("B");
-        Assertions.assertEquals("A", mockList.get(0));
+        Assertions.assertEquals("A", mockList.getFirst());
+
+        mockList = Mockito.mock(List.class);
+        Mockito.when(mockList.size()).thenReturn(100);
         Assertions.assertEquals(100, mockList.size());
     }
 }

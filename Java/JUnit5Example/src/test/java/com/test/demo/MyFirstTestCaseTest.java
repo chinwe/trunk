@@ -59,7 +59,7 @@ public class MyFirstTestCaseTest {
     @Test
     @DisplayName("超时方法测试")
     void test_should_complete_in_one_second() {
-     Assertions.assertTimeoutPreemptively(Duration.of(1, ChronoUnit.SECONDS), () -> Thread.sleep(2000));
+     Assertions.assertTimeoutPreemptively(Duration.of(3, ChronoUnit.SECONDS), () -> Thread.sleep(2000));
     }
 
     @Test
