@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: learning-spring-samples
+
+# actuator
+management:
+  endpoints:
+    web:
+      base-path: /application
+      exposure:
+        include: '*'
+
