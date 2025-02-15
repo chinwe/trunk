@@ -3,7 +3,7 @@ package org.exapmle.jvm.jfr;
 import jdk.test.whitebox.WhiteBox;
 
 /**
- * VM Args: -Xbootclasspath/a:lib/whitebox-1.0-SNAPSHOT.jar -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xlog:gc
+ * VM options: -Xbootclasspath/a:lib/whitebox-1.0-SNAPSHOT.jar -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI -Xlog:gc
  *
  * @author chinwe
  * 2025/2/15

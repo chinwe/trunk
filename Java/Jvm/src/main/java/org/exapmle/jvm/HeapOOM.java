@@ -3,7 +3,8 @@ package org.exapmle.jvm;
 import java.util.ArrayList;
 
 /**
- * VM Args: -Xms20m -Xmx20m -XX:+HeapDumpOnOutOfMemoryError
+ * VM options: -Xms20m -Xmx20m -XX:+HeapDumpOnOutOfMemoryError
+ * -XX:StartFlightRecording=disk=true,maxsize=5000m,maxage=2d,settings=./allocation.jfc,filename=./recording.jfr -XX:FlightRecorderOptions=maxchunksize=128m,repository=./,stackdepth=256
  *
  * @author mozixun
  * @description
