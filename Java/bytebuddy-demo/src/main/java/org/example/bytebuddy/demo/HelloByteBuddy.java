@@ -18,6 +18,7 @@ public class HelloByteBuddy {
     public static void main(String[] args) throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
         try (var byteBuddy = new ByteBuddy()
                 .subclass(Object.class)
+                .name("org.example.bytebuddy.demo.Hello")
                 .method(ElementMatchers.named("toString"))
                 .intercept(FixedValue.value("Hello ByteBuddy!"))
                 .make()) {
