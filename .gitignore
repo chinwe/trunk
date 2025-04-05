@@ -71,3 +71,6 @@ vsxmake2019/
 
 # python
 *.pyc
+uv.lock
+.venv/
+__pycache__/
