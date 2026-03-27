@@ -12,7 +12,7 @@
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <!-- version -->
-        <spring-framework.version>5.3.14</spring-framework.version>
+        <spring-framework.version>5.3.18</spring-framework.version>
         <junit.version>5.6.2</junit.version>
     </properties>
 
