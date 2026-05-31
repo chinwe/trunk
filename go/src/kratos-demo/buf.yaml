@@ -1,0 +1,24 @@
+# buf.yaml - buf 模块配置
+# 文档: https://buf.build/docs/configuration/v2/buf-yaml
+version: v2
+modules:
+  - path: .
+    name: buf.build/kratos-demo/helloworld
+# 远程依赖（替代本地 third_party）
+deps:
+  - buf.build/googleapis/googleapis
+lint:
+  use:
+    - STANDARD
+  except:
+    # go-kratos 项目布局中 proto 文件不在标准 buf 目录结构下
+    - PACKAGE_DIRECTORY_MATCH
+    # go-kratos 使用经典 RPC 命名（HelloRequest 而非 SayHelloRequest）
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    # 内部配置包不需要版本后缀
+    - PACKAGE_VERSION_SUFFIX
+breaking:
+  use:
+    - FILE

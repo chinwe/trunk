@@ -1,4 +1,4 @@
-.PHONY: all init api wire build run clean
+.PHONY: all init api wire build run clean lint breaking
 
 # 项目名
 APP_NAME = kratos-demo
@@ -11,10 +11,21 @@ init:
 	go mod download
 	go mod tidy
 
-# 生成 proto 代码（使用 python grpc_tools 替代 protoc）
+# 生成 proto 代码（使用 buf CLI）
 api:
-	python -m grpc_tools.protoc --proto_path=. --proto_path=./third_party --go_out=paths=source_relative:. --go-http_out=paths=source_relative:. --go-grpc_out=paths=source_relative:. api/helloworld/v1/helloworld.proto
-	python -m grpc_tools.protoc --proto_path=. --proto_path=./third_party --go_out=paths=source_relative:. internal/conf/conf.proto
+	buf generate
+
+# 更新 buf 远程依赖
+buf-update:
+	buf dep update
+
+# proto lint 检查
+lint:
+	buf lint
+
+# proto 破坏性变更检测
+breaking:
+	buf breaking --against '.git#branch=master'
 
 # 生成 wire
 wire:
@@ -28,6 +39,6 @@ build:
 run:
 	go run ./cmd/demo/... -conf ./configs
 
-# 清理
+# 清理生成文件
 clean:
 	rm -rf ./bin/
