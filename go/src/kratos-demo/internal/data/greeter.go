@@ -11,15 +11,13 @@ import (
 
 // greeterRepo 问候仓库实现
 type greeterRepo struct {
-	data *Data
-	log  *log.Helper
+	log *log.Helper
 }
 
 // NewGreeterRepo 创建问候仓库
-func NewGreeterRepo(data *Data, logger log.Logger) biz.GreeterRepo {
+func NewGreeterRepo(logger log.Logger) biz.GreeterRepo {
 	return &greeterRepo{
-		data: data,
-		log:  log.NewHelper(logger),
+		log: log.NewHelper(logger),
 	}
 }
 
