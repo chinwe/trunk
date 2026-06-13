@@ -28,6 +28,5 @@ func NewGreeterUsecase(repo GreeterRepo, logger log.Logger) *GreeterUsecase {
 
 // SayHello 执行问候逻辑
 func (uc *GreeterUsecase) SayHello(ctx context.Context, name string) (string, error) {
-	uc.log.WithContext(ctx).Infof("SayHello called with name: %s", name)
 	return uc.repo.CreateHello(ctx, name)
 }

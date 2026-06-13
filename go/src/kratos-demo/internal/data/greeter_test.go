@@ -10,39 +10,25 @@ import (
 func TestGreeterRepo_CreateHello(t *testing.T) {
 	repo := NewGreeterRepo(log.DefaultLogger)
 
-	got, err := repo.CreateHello(context.Background(), "world")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	tests := []struct {
+		name string
+		arg  string
+		want string
+	}{
+		{"normal", "world", "Hello world"},
+		{"empty", "", "Hello "},
+		{"unicode", "张三", "Hello 张三"},
 	}
-	want := "Hello world"
-	if got != want {
-		t.Errorf("CreateHello() = %q, want %q", got, want)
-	}
-}
 
-func TestGreeterRepo_CreateHello_EmptyName(t *testing.T) {
-	repo := NewGreeterRepo(log.DefaultLogger)
-
-	got, err := repo.CreateHello(context.Background(), "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "Hello "
-	if got != want {
-		t.Errorf("CreateHello() = %q, want %q", got, want)
-	}
-}
-
-func TestGreeterRepo_CreateHello_SpecialChars(t *testing.T) {
-	repo := NewGreeterRepo(log.DefaultLogger)
-
-	name := "张三"
-	got, err := repo.CreateHello(context.Background(), name)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "Hello 张三"
-	if got != want {
-		t.Errorf("CreateHello() = %q, want %q", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := repo.CreateHello(context.Background(), tt.arg)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("CreateHello() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

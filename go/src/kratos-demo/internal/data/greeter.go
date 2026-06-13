@@ -5,9 +5,13 @@ import (
 	"fmt"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/google/wire"
 
 	"kratos-demo/internal/biz"
 )
+
+// ProviderSet 数据层依赖注入集合
+var ProviderSet = wire.NewSet(NewGreeterRepo)
 
 // greeterRepo 问候仓库实现
 type greeterRepo struct {
@@ -17,12 +21,11 @@ type greeterRepo struct {
 // NewGreeterRepo 创建问候仓库
 func NewGreeterRepo(logger log.Logger) biz.GreeterRepo {
 	return &greeterRepo{
-		log: log.NewHelper(logger),
+		log: log.NewHelper(log.With(logger, "module", "data/greeter")),
 	}
 }
 
 // CreateHello 创建问候消息
 func (r *greeterRepo) CreateHello(ctx context.Context, name string) (string, error) {
-	r.log.WithContext(ctx).Infof("CreateHello: name=%s", name)
 	return fmt.Sprintf("Hello %s", name), nil
 }
