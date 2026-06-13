@@ -12,6 +12,14 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
+// 包级函数变量：默认指向 kratos/otel 的真实实现，测试时替换为返回错误的版本，
+// 用以覆盖 NewMetrics 的错误传播路径（依赖初始化失败须原样返回 error，不吞错、不返回部分实例）。
+var (
+	exporterFactory  = otelprom.New
+	counterFactory   = metrics.DefaultRequestsCounter
+	histogramFactory = metrics.DefaultSecondsHistogram
+)
+
 // Metrics 封装 server 级可观测性指标：请求计数/延迟中间件与 /metrics 暴露 handler。
 // HTTP 与 gRPC server 共享同一实例，counter/histogram 仅创建一次，以 kind 标签区分 transport。
 type Metrics struct {
@@ -31,7 +39,7 @@ func NewMetrics() (*Metrics, error) {
 	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	// OTel Prometheus exporter 桥接到独立 registry
-	exporter, err := otelprom.New(otelprom.WithRegisterer(reg))
+	exporter, err := exporterFactory(otelprom.WithRegisterer(reg))
 	if err != nil {
 		return nil, err
 	}
@@ -45,11 +53,11 @@ func NewMetrics() (*Metrics, error) {
 	meter := provider.Meter("kratos-demo")
 
 	// 请求计数 counter 与处理延迟 histogram（沿用 kratos metrics 中间件的默认指标名）
-	counter, err := metrics.DefaultRequestsCounter(meter, metrics.DefaultServerRequestsCounterName)
+	counter, err := counterFactory(meter, metrics.DefaultServerRequestsCounterName)
 	if err != nil {
 		return nil, err
 	}
-	histogram, err := metrics.DefaultSecondsHistogram(meter, metrics.DefaultServerSecondsHistogramName)
+	histogram, err := histogramFactory(meter, metrics.DefaultServerSecondsHistogramName)
 	if err != nil {
 		return nil, err
 	}
