@@ -15,7 +15,7 @@ import (
 )
 
 // NewGRPCServer 创建 gRPC 服务器
-func NewGRPCServer(c *conf.Server, greeter *service.GreeterService, logger log.Logger) *grpc.Server {
+func NewGRPCServer(c *conf.Server, greeter *service.GreeterService, m *Metrics, logger log.Logger) *grpc.Server {
 	log := log.NewHelper(logger)
 
 	opts := []grpc.ServerOption{
@@ -23,6 +23,7 @@ func NewGRPCServer(c *conf.Server, greeter *service.GreeterService, logger log.L
 			recovery.Recovery(),
 			tracing.Server(),
 			logging.Server(logger),
+			m.Middleware,
 		),
 	}
 	if c.Grpc != nil {

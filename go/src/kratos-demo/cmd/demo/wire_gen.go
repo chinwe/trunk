@@ -23,8 +23,12 @@ func initApp(confServer *conf.Server, logger log.Logger) (*kratos.App, func(), e
 	greeterRepo := data.NewGreeterRepo(logger)
 	greeterUsecase := biz.NewGreeterUsecase(greeterRepo, logger)
 	greeterService := service.NewGreeterService(greeterUsecase, logger)
-	httpServer := server.NewHTTPServer(confServer, greeterService, logger)
-	grpcServer := server.NewGRPCServer(confServer, greeterService, logger)
+	metrics, err := server.NewMetrics()
+	if err != nil {
+		return nil, nil, err
+	}
+	httpServer := server.NewHTTPServer(confServer, greeterService, metrics, logger)
+	grpcServer := server.NewGRPCServer(confServer, greeterService, metrics, logger)
 	app := newApp(logger, httpServer, grpcServer)
 	return app, func() {
 	}, nil
