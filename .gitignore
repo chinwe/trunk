@@ -74,3 +74,6 @@ vsxmake2019/
 uv.lock
 .venv/
 __pycache__/
+
+# Reasonix (personal local tool config)
+reasonix.toml
