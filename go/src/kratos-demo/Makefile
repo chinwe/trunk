@@ -1,4 +1,4 @@
-.PHONY: all init api wire build run clean lint breaking
+.PHONY: all init api wire build test run clean lint breaking
 
 # 项目名
 APP_NAME = kratos-demo
@@ -34,6 +34,10 @@ wire:
 # 编译
 build:
 	go build -o ./bin/ ./cmd/demo/...
+
+# 测试
+test:
+	go test ./...
 
 # 运行（使用 go run 保证跨平台兼容）
 run:
