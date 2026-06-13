@@ -12,7 +12,7 @@
 | `internal/biz/` | 业务用例层。定义 `Repo` 接口与 `Usecase`，核心业务逻辑放这里 |
 | `internal/service/` | 服务层。实现 proto 生成的 Service，将请求转发给 biz usecase |
 | `internal/data/` | 数据层。实现 biz 定义的 `Repo` 接口，含 wire `ProviderSet` |
-| `internal/server/` | HTTP/gRPC server 装配 |
+| `internal/server/` | HTTP/gRPC server 装配、Prometheus 指标暴露（`Metrics` 类型） |
 | `internal/conf/` | 配置 proto（`config.yaml` 反序列化为结构） |
 | `cmd/demo/` | 程序入口 + wire 依赖注入（`wire.go` / `wire_gen.go`） |
 
@@ -23,6 +23,7 @@
 | 命令 | 作用 |
 |------|------|
 | `make build` | 编译到 `./bin/` |
+| `make init` | 首次拉取并整理依赖（`go mod download` + `go mod tidy`） |
 | `make run` | 运行服务（`go run ./cmd/demo/... -conf ./configs`） |
 | `make test` | 运行全部测试 |
 | `make api` | buf 生成 proto 代码（改 `.proto` 后执行） |
@@ -35,6 +36,8 @@
 > **无 `make` 环境**：若未安装 `make`（如 Windows Git Bash），直接用底层命令替代：
 > `go build ./cmd/demo/...` · `go test ./...` · `go run ./cmd/demo/... -conf ./configs` · `buf generate` · `cd cmd/demo && wire` · `buf lint` · `buf breaking --against '.git#branch=master'`
 
+> **容器化**：项目含多阶段 `Dockerfile`（`EXPOSE 8000 9000`），用 `docker build -t kratos-demo .` 构建。
+
 ## 验证清单（完成工作前必须确认）
 
 "完成"的标准是**能跑起来**，而不只是编译/测试通过。每次改动后按顺序确认：
@@ -43,7 +46,8 @@
 2. `make test` — 全部测试通过
 3. `make run` — 服务正常启动（监听 8000/9000）
 4. `curl http://localhost:8000/helloworld/kratos` — 返回 `{"message":"Hello kratos"}`
-5. 若改了 proto：`make lint && make breaking` — 无 lint 错误、无破坏性变更
+5. （可选）`curl http://localhost:8000/metrics` — 返回 Prometheus 文本格式指标
+6. 若改了 proto：`make lint && make breaking` — 无 lint 错误、无破坏性变更
 
 ## 代码规范
 
@@ -58,6 +62,16 @@
 - `api/helloworld/v1/*.pb.go`、`*_grpc.pb.go`、`*_http.pb.go` — 由 `make api` 从 `.proto` 生成
 - `cmd/demo/wire_gen.go` — 由 `make wire` 从 `wire.go` 生成
 - `internal/conf/conf.pb.go` — 由 `make api` 生成
+
+## 可观测性（Metrics）
+
+服务经 `internal/server/metrics.go` 的 `Metrics` 类型暴露 Prometheus 指标：
+
+- 请求计数与处理延迟直方图由 kratos `metrics` 中间件采集，HTTP/gRPC 共用同一实例，以 `kind` 标签区分 transport。
+- `/metrics` 端点直挂 HTTP 业务端口（`:8000`）的底层 mux，**绕过** recovery/tracing/logging 中间件链，故抓取不产生访问日志与 trace span。
+- 使用独立 Prometheus registry（非全局默认），多实例/测试间互不干扰；另注册 Go runtime 与 process 指标。
+- 零配置（`config.yaml` 无需 metrics 段），无 proto 改动。
+- `server.ProviderSet` 含 `NewMetrics`，改它后须执行 `make wire`。
 
 ## Agent 工作流
 
