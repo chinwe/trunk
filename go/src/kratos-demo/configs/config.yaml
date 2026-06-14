@@ -5,3 +5,10 @@ server:
   grpc:
     addr: 0.0.0.0:9000
     timeout: 1s
+
+data:
+  database:
+    driver: mysql
+    # DSN 经环境变量注入,配置文件不留明文密码。
+    # 本地启动前设置(Git Bash):export DATABASE_SOURCE="root:密码@tcp(127.0.0.1:3306)/kratos_demo"
+    source: "${DATABASE_SOURCE}"

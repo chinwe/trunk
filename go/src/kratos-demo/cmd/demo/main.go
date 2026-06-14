@@ -50,7 +50,7 @@ func main() {
 	}
 
 	// 通过 wire 初始化应用
-	app, cleanup, err := initApp(bc.Server, logger)
+	app, cleanup, err := initApp(bc.Server, bc.Data, logger)
 	if err != nil {
 		panic(err)
 	}

@@ -4,28 +4,34 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-kratos/kratos/v2/log"
-	"github.com/google/wire"
-
 	"kratos-demo/internal/biz"
+
+	"github.com/go-kratos/kratos/v2/log"
 )
 
-// ProviderSet 数据层依赖注入集合
-var ProviderSet = wire.NewSet(NewGreeterRepo)
-
-// greeterRepo 问候仓库实现
+// greeterRepo 问候仓库实现,基于 ent 客户端持久化问候记录。
 type greeterRepo struct {
-	log *log.Helper
+	data *Data
+	log  *log.Helper
 }
 
 // NewGreeterRepo 创建问候仓库
-func NewGreeterRepo(logger log.Logger) biz.GreeterRepo {
+func NewGreeterRepo(data *Data, logger log.Logger) biz.GreeterRepo {
 	return &greeterRepo{
-		log: log.NewHelper(log.With(logger, "module", "data/greeter")),
+		data: data,
+		log:  log.NewHelper(log.With(logger, "module", "data/greeter")),
 	}
 }
 
-// CreateHello 创建问候消息
+// CreateHello 生成问候消息并落库,返回问候消息。created_at 由 schema 默认值自动填充。
 func (r *greeterRepo) CreateHello(ctx context.Context, name string) (string, error) {
-	return fmt.Sprintf("Hello %s", name), nil
+	message := fmt.Sprintf("Hello %s", name)
+	_, err := r.data.client.Greeting.Create().
+		SetName(name).
+		SetMessage(message).
+		Save(ctx)
+	if err != nil {
+		return "", err
+	}
+	return message, nil
 }

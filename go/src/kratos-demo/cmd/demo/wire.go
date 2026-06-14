@@ -16,7 +16,7 @@ import (
 )
 
 // initApp 初始化 kratos 应用（wire 注入）
-func initApp(*conf.Server, log.Logger) (*kratos.App, func(), error) {
+func initApp(*conf.Server, *conf.Data, log.Logger) (*kratos.App, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
 		data.ProviderSet,

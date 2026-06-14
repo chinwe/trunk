@@ -25,6 +25,7 @@ const (
 type Bootstrap struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Server        *Server                `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
+	Data          *Data                  `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -62,6 +63,13 @@ func (*Bootstrap) Descriptor() ([]byte, []int) {
 func (x *Bootstrap) GetServer() *Server {
 	if x != nil {
 		return x.Server
+	}
+	return nil
+}
+
+func (x *Bootstrap) GetData() *Data {
+	if x != nil {
+		return x.Data
 	}
 	return nil
 }
@@ -118,6 +126,51 @@ func (x *Server) GetGrpc() *Server_GRPC {
 	return nil
 }
 
+// Data 数据层配置(数据库连接等)
+type Data struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Database      *Data_Database         `protobuf:"bytes,1,opt,name=database,proto3" json:"database,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Data) Reset() {
+	*x = Data{}
+	mi := &file_internal_conf_conf_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Data) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Data) ProtoMessage() {}
+
+func (x *Data) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_conf_conf_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Data.ProtoReflect.Descriptor instead.
+func (*Data) Descriptor() ([]byte, []int) {
+	return file_internal_conf_conf_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Data) GetDatabase() *Data_Database {
+	if x != nil {
+		return x.Database
+	}
+	return nil
+}
+
 type Server_HTTP struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Addr          string                 `protobuf:"bytes,1,opt,name=addr,proto3" json:"addr,omitempty"`
@@ -128,7 +181,7 @@ type Server_HTTP struct {
 
 func (x *Server_HTTP) Reset() {
 	*x = Server_HTTP{}
-	mi := &file_internal_conf_conf_proto_msgTypes[2]
+	mi := &file_internal_conf_conf_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -140,7 +193,7 @@ func (x *Server_HTTP) String() string {
 func (*Server_HTTP) ProtoMessage() {}
 
 func (x *Server_HTTP) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_conf_conf_proto_msgTypes[2]
+	mi := &file_internal_conf_conf_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -180,7 +233,7 @@ type Server_GRPC struct {
 
 func (x *Server_GRPC) Reset() {
 	*x = Server_GRPC{}
-	mi := &file_internal_conf_conf_proto_msgTypes[3]
+	mi := &file_internal_conf_conf_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -192,7 +245,7 @@ func (x *Server_GRPC) String() string {
 func (*Server_GRPC) ProtoMessage() {}
 
 func (x *Server_GRPC) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_conf_conf_proto_msgTypes[3]
+	mi := &file_internal_conf_conf_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -222,13 +275,68 @@ func (x *Server_GRPC) GetTimeout() *durationpb.Duration {
 	return nil
 }
 
+type Data_Database struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 数据库驱动,例如 mysql
+	Driver string `protobuf:"bytes,1,opt,name=driver,proto3" json:"driver,omitempty"`
+	// 数据源 DSN,支持 ${ENV_VAR} 形式的环境变量占位,避免明文密码入库
+	Source        string `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Data_Database) Reset() {
+	*x = Data_Database{}
+	mi := &file_internal_conf_conf_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Data_Database) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Data_Database) ProtoMessage() {}
+
+func (x *Data_Database) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_conf_conf_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Data_Database.ProtoReflect.Descriptor instead.
+func (*Data_Database) Descriptor() ([]byte, []int) {
+	return file_internal_conf_conf_proto_rawDescGZIP(), []int{2, 0}
+}
+
+func (x *Data_Database) GetDriver() string {
+	if x != nil {
+		return x.Driver
+	}
+	return ""
+}
+
+func (x *Data_Database) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
 var File_internal_conf_conf_proto protoreflect.FileDescriptor
 
 const file_internal_conf_conf_proto_rawDesc = "" +
 	"\n" +
-	"\x18internal/conf/conf.proto\x12\x19kratos.demo.internal.conf\x1a\x1egoogle/protobuf/duration.proto\"F\n" +
+	"\x18internal/conf/conf.proto\x12\x19kratos.demo.internal.conf\x1a\x1egoogle/protobuf/duration.proto\"{\n" +
 	"\tBootstrap\x129\n" +
-	"\x06server\x18\x01 \x01(\v2!.kratos.demo.internal.conf.ServerR\x06server\"\xa2\x02\n" +
+	"\x06server\x18\x01 \x01(\v2!.kratos.demo.internal.conf.ServerR\x06server\x123\n" +
+	"\x04data\x18\x02 \x01(\v2\x1f.kratos.demo.internal.conf.DataR\x04data\"\xa2\x02\n" +
 	"\x06Server\x12:\n" +
 	"\x04http\x18\x01 \x01(\v2&.kratos.demo.internal.conf.Server.HTTPR\x04http\x12:\n" +
 	"\x04grpc\x18\x02 \x01(\v2&.kratos.demo.internal.conf.Server.GRPCR\x04grpc\x1aO\n" +
@@ -237,7 +345,12 @@ const file_internal_conf_conf_proto_rawDesc = "" +
 	"\atimeout\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x1aO\n" +
 	"\x04GRPC\x12\x12\n" +
 	"\x04addr\x18\x01 \x01(\tR\x04addr\x123\n" +
-	"\atimeout\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\atimeoutB Z\x1ekratos-demo/internal/conf;confb\x06proto3"
+	"\atimeout\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\atimeout\"\x88\x01\n" +
+	"\x04Data\x12D\n" +
+	"\bdatabase\x18\x01 \x01(\v2(.kratos.demo.internal.conf.Data.DatabaseR\bdatabase\x1a:\n" +
+	"\bDatabase\x12\x16\n" +
+	"\x06driver\x18\x01 \x01(\tR\x06driver\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06sourceB Z\x1ekratos-demo/internal/conf;confb\x06proto3"
 
 var (
 	file_internal_conf_conf_proto_rawDescOnce sync.Once
@@ -251,25 +364,29 @@ func file_internal_conf_conf_proto_rawDescGZIP() []byte {
 	return file_internal_conf_conf_proto_rawDescData
 }
 
-var file_internal_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_internal_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_internal_conf_conf_proto_goTypes = []any{
 	(*Bootstrap)(nil),           // 0: kratos.demo.internal.conf.Bootstrap
 	(*Server)(nil),              // 1: kratos.demo.internal.conf.Server
-	(*Server_HTTP)(nil),         // 2: kratos.demo.internal.conf.Server.HTTP
-	(*Server_GRPC)(nil),         // 3: kratos.demo.internal.conf.Server.GRPC
-	(*durationpb.Duration)(nil), // 4: google.protobuf.Duration
+	(*Data)(nil),                // 2: kratos.demo.internal.conf.Data
+	(*Server_HTTP)(nil),         // 3: kratos.demo.internal.conf.Server.HTTP
+	(*Server_GRPC)(nil),         // 4: kratos.demo.internal.conf.Server.GRPC
+	(*Data_Database)(nil),       // 5: kratos.demo.internal.conf.Data.Database
+	(*durationpb.Duration)(nil), // 6: google.protobuf.Duration
 }
 var file_internal_conf_conf_proto_depIdxs = []int32{
 	1, // 0: kratos.demo.internal.conf.Bootstrap.server:type_name -> kratos.demo.internal.conf.Server
-	2, // 1: kratos.demo.internal.conf.Server.http:type_name -> kratos.demo.internal.conf.Server.HTTP
-	3, // 2: kratos.demo.internal.conf.Server.grpc:type_name -> kratos.demo.internal.conf.Server.GRPC
-	4, // 3: kratos.demo.internal.conf.Server.HTTP.timeout:type_name -> google.protobuf.Duration
-	4, // 4: kratos.demo.internal.conf.Server.GRPC.timeout:type_name -> google.protobuf.Duration
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	2, // 1: kratos.demo.internal.conf.Bootstrap.data:type_name -> kratos.demo.internal.conf.Data
+	3, // 2: kratos.demo.internal.conf.Server.http:type_name -> kratos.demo.internal.conf.Server.HTTP
+	4, // 3: kratos.demo.internal.conf.Server.grpc:type_name -> kratos.demo.internal.conf.Server.GRPC
+	5, // 4: kratos.demo.internal.conf.Data.database:type_name -> kratos.demo.internal.conf.Data.Database
+	6, // 5: kratos.demo.internal.conf.Server.HTTP.timeout:type_name -> google.protobuf.Duration
+	6, // 6: kratos.demo.internal.conf.Server.GRPC.timeout:type_name -> google.protobuf.Duration
+	7, // [7:7] is the sub-list for method output_type
+	7, // [7:7] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_internal_conf_conf_proto_init() }
@@ -283,7 +400,7 @@ func file_internal_conf_conf_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_conf_conf_proto_rawDesc), len(file_internal_conf_conf_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

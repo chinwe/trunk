@@ -8,6 +8,7 @@ import "google/protobuf/duration.proto";
 
 message Bootstrap {
   Server server = 1;
+  Data data = 2;
 }
 
 message Server {
@@ -21,4 +22,15 @@ message Server {
   }
   HTTP http = 1;
   GRPC grpc = 2;
+}
+
+// Data 数据层配置(数据库连接等)
+message Data {
+  message Database {
+    // 数据库驱动,例如 mysql
+    string driver = 1;
+    // 数据源 DSN,支持 ${ENV_VAR} 形式的环境变量占位,避免明文密码入库
+    string source = 2;
+  }
+  Database database = 1;
 }
