@@ -23,9 +23,10 @@ buf-update:
 lint:
 	buf lint
 
-# proto 破坏性变更检测
+# proto 破坏性变更检测（monorepo 适配：git root 在上层 trunk，
+# 标准 .git#branch=master 失效，取 master 的本目录子树再对比）
 breaking:
-	buf breaking --against '.git#branch=master'
+	d=$$(mktemp -d); git archive master . | tar -x -C $$d && buf breaking --against $$d; status=$$?; rm -rf $$d; exit $$status
 
 # 生成 wire
 wire:

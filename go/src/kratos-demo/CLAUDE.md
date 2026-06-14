@@ -29,12 +29,18 @@
 | `make api` | buf 生成 proto 代码（改 `.proto` 后执行） |
 | `make wire` | 生成依赖注入代码（改 `ProviderSet` 后执行） |
 | `make lint` | buf proto lint 检查 |
-| `make breaking` | proto 破坏性变更检测（对比 master 分支） |
+| `make breaking` | proto 破坏性变更检测（对比 master 分支）。⚠ 见下方"无 make 环境"的 monorepo 适配说明——Makefile 内置命令在当前结构下失效 |
 
 服务端口：HTTP `:8000`、gRPC `:9000`（见 `configs/config.yaml`）。
 
 > **无 `make` 环境**：若未安装 `make`（如 Windows Git Bash），直接用底层命令替代：
-> `go build ./cmd/demo/...` · `go test ./...` · `go run ./cmd/demo/... -conf ./configs` · `buf generate` · `cd cmd/demo && wire` · `go generate ./internal/data/ent/` · `buf lint` · `buf breaking --against '.git#branch=master'`
+> `go build ./cmd/demo/...` · `go test ./...` · `go run ./cmd/demo/... -conf ./configs` · `buf generate` · `cd cmd/demo && wire` · `go generate ./internal/data/ent/` · `buf lint`
+>
+> **`buf breaking`（monorepo 适配）**：本仓库 git root 在上层 `trunk`，标准 `.git#branch=master` 因 cwd 非 git root、且 buf git input 不支持子目录 `path` 而失效（报 `google.api.http` 找不到）。改用 `git archive` 取 master 的本目录子树再对比：
+>
+> ```bash
+> d=$(mktemp -d) && git archive master . | tar -x -C "$d" && buf breaking --against "$d"; rm -rf "$d"
+> ```
 
 > **容器化**：项目含多阶段 `Dockerfile`（`EXPOSE 8000 9000`），用 `docker build -t kratos-demo .` 构建。
 
@@ -48,7 +54,7 @@
 4. `make run` — 服务正常启动（监听 8000/9000；启动时 ent 自动建表）
 5. `curl http://localhost:8000/helloworld/kratos` — 返回 `{"message":"Hello kratos"}`，且 `kratos_demo.greetings` 表新增一条记录
 6. （可选）`curl http://localhost:8000/metrics` — 返回 Prometheus 文本格式指标
-7. 若改了 proto：`make lint && make breaking` — 无 lint 错误、无破坏性变更
+7. 若改了 proto：`make lint`（无 lint 错误）+ breaking 检查（见"无 make 环境"的 monorepo 适配命令，无破坏性变更）
 
 ## 代码规范
 
