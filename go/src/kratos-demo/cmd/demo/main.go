@@ -13,6 +13,7 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-kratos/kratos/v2/transport/http"
+	"github.com/joho/godotenv"
 )
 
 var flagconf string
@@ -31,6 +32,12 @@ func main() {
 		"caller",       log.DefaultCaller,
 		"service.name", "kratos-demo",
 	)
+
+	// 可选加载 .env（开发便利）：存在则注入到环境变量，供 os.ExpandEnv 读取；
+	// 不存在则依赖真实环境变量（生产场景）。加载失败不致命。
+	if err := godotenv.Load(); err != nil {
+		log.NewHelper(logger).Infof("no .env loaded, using environment variables directly: %v", err)
+	}
 
 	// 加载配置
 	c := config.New(

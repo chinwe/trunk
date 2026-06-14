@@ -20,7 +20,7 @@ kratos-demo 原为无状态 Hello World 示例，`CONTEXT.md` 明确「无持久
 - ent schema 定义 `Greeting`（`name` / `message` / `created_at`），位于 `internal/data/ent/schema/`，改 schema 后执行 `go generate ./internal/data/ent/` 重新生成。
 - `internal/data/data.go` 的 `Data` 持有 ent 客户端；`NewData` 启动时 `client.Schema.Create` 自动建表（幂等）。
 - `greeterRepo.CreateHello` 生成 `Hello {name}` 后经 ent `INSERT` 落库。
-- **DSN 经环境变量 `DATABASE_SOURCE` 注入**：`configs/config.yaml` 只放 `${DATABASE_SOURCE}` 占位，`NewData` 用 `os.ExpandEnv` 展开。明文密码不入库、不入配置。
+- **DSN 经环境变量 `DATABASE_SOURCE` 注入**：`configs/config.yaml` 只放 `${DATABASE_SOURCE}` 占位，`NewData` 用 `os.ExpandEnv` 展开。明文密码不入库、不入配置。开发时用 `.env`（`godotenv` 加载到环境变量，`.gitignore` 已排除，模板 `.env.example` 入库）；生产可改用真实环境变量或 secret manager。
 
 ## Alternatives considered
 
@@ -33,8 +33,8 @@ kratos-demo 原为无状态 Hello World 示例，`CONTEXT.md` 明确「无持久
 **密码方案**
 
 - 明文 DSN 写 `configs/config.yaml`：简单但密码入库，不安全。
-- 独立 secret 文件（`.env`）+ gitignore：可行，但多一份配置文件与加载逻辑。
-- **环境变量 `DATABASE_SOURCE`（选中）**：零额外文件，配置文件可安全入库，符合 12-factor。
+- 真实环境变量（无 `.env`）：符合 12-factor，但开发时每次开终端都要重设。
+- **环境变量 `DATABASE_SOURCE` + `.env` 开发便利（选中）**：`godotenv` 在 `main` 启动时加载 `.env`（已 gitignore）到环境变量，统一走 `os.ExpandEnv`；配置文件可安全入库，开发免重复设置，生产去掉 `.env` 即回退到真实环境变量。
 
 ## Consequences
 

@@ -1,2 +1,5 @@
 # Claude Code 个人本地配置（不进版本库）
 .claude/settings.local.json
+
+# .env 含明文密码，不进版本库（用 .env.example 作模板）
+.env

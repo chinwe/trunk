@@ -50,7 +50,7 @@
 
 1. `make build` — 编译通过
 2. `make test` — 全部测试通过
-3. **MySQL 前置**：建库 `mysql -u root -p < configs/init.sql`；设 DSN `export DATABASE_SOURCE="user:pass@tcp(127.0.0.1:3306)/kratos_demo"`（密码只走环境变量，不入配置文件）
+3. **MySQL 前置**：建库 `mysql -u root -p < configs/init.sql`；配置 DSN `cp .env.example .env` 后填入真实密码（`.env` 已 gitignore；启动时 `godotenv` 注入环境变量，`os.ExpandEnv` 展开）
 4. `make run` — 服务正常启动（监听 8000/9000；启动时 ent 自动建表）
 5. `curl http://localhost:8000/helloworld/kratos` — 返回 `{"message":"Hello kratos"}`，且 `kratos_demo.greetings` 表新增一条记录
 6. （可选）`curl http://localhost:8000/metrics` — 返回 Prometheus 文本格式指标
@@ -87,7 +87,7 @@
 
 - ent schema 定义在 `internal/data/ent/schema/`，`internal/data/ent/**` 为生成产物。改 schema 后执行 `go generate ./internal/data/ent/`（勿手改生成代码）。
 - `internal/data/data.go` 的 `Data` 持有 ent 客户端（wire `ProviderSet` 收口 `NewData` + `NewGreeterRepo`）；`NewData` 启动时执行 `client.Schema.Create` 自动建表（幂等）。
-- DSN 经环境变量 `DATABASE_SOURCE` 注入：`configs/config.yaml` 只放 `${DATABASE_SOURCE}` 占位，`NewData` 用 `os.ExpandEnv` 展开。**明文密码不入库、不入配置**。
+- DSN 经环境变量 `DATABASE_SOURCE` 注入：`configs/config.yaml` 只放 `${DATABASE_SOURCE}` 占位，`NewData` 用 `os.ExpandEnv` 展开。**明文密码不入库、不入配置**。开发便利：`main` 启动时 `godotenv` 加载 `.env`（`.gitignore` 已排除，模板见 `.env.example`）到环境变量；生产去掉 `.env` 即回退到真实环境变量。
 - 库本身需预建（`configs/init.sql`）；表由 ent 自动迁移。
 - data 层单测用 `sqlmock`（无 CGO，满足 pre-commit hook 在无 MySQL/无 gcc 环境下跑 `go test ./...`）。
 
