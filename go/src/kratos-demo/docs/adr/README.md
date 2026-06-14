@@ -23,4 +23,4 @@ Each ADR is a markdown file named `NNNN-title-with-dashes.md`, following the sta
 
 ## Current ADRs
 
-*(None yet — created on demand.)*
+- [0001 — 问候记录持久化:ent + MySQL + 环境变量 DSN](0001-persist-greetings-via-ent.md)
