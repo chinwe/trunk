@@ -9,6 +9,5 @@ server:
 data:
   database:
     driver: mysql
-    # DSN 经环境变量注入,配置文件不留明文密码。
-    # 本地启动前设置(Git Bash):export DATABASE_SOURCE="root:密码@tcp(127.0.0.1:3306)/kratos_demo"
-    source: "${DATABASE_SOURCE}"
+    # DSN 经环境变量 DATABASE_SOURCE 注入（见 .env / .env.example），不在此文件存放。
+    # Kratos config 会把 ${VAR} 占位替换为空，故 NewData 直接读 os.Getenv，不经此字段。

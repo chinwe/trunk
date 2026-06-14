@@ -33,7 +33,7 @@ func main() {
 		"service.name", "kratos-demo",
 	)
 
-	// 可选加载 .env（开发便利）：存在则注入到环境变量，供 os.ExpandEnv 读取；
+	// 可选加载 .env（开发便利）：存在则注入到环境变量，供 os.Getenv 读取；
 	// 不存在则依赖真实环境变量（生产场景）。加载失败不致命。
 	if err := godotenv.Load(); err != nil {
 		log.NewHelper(logger).Infof("no .env loaded, using environment variables directly: %v", err)

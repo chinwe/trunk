@@ -28,8 +28,9 @@ type Data struct {
 func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 	log := log.NewHelper(log.With(logger, "module", "data"))
 
-	// DSN 从环境变量注入,配置文件不留明文密码
-	dsn := os.ExpandEnv(c.Database.GetSource())
+	// DSN 从环境变量 DATABASE_SOURCE 注入（见 .env / .env.example），配置文件不留明文密码。
+	// 不走 config.yaml 的 ${VAR} 占位：Kratos config 会把 ${VAR} 替换为空，故直接读 os.Getenv。
+	dsn := os.Getenv("DATABASE_SOURCE")
 	driver := c.Database.GetDriver()
 
 	client, err := ent.Open(driver, dsn)
