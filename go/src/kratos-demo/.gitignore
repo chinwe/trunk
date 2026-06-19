@@ -3,3 +3,6 @@
 
 # .env 含明文密码，不进版本库（用 .env.example 作模板）
 .env
+
+# Playwright MCP 工作目录（工具生成的临时产物）
+.playwright-mcp/
