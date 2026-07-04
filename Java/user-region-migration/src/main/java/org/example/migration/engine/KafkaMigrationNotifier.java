@@ -32,9 +32,11 @@ public class KafkaMigrationNotifier implements MigrationNotifier {
     }
 
     private void sendTo(RegionName region, String key, String payload) {
-        KafkaClient kafka = registry.client(region, ClientType.KAFKA, KafkaClient.class);
-        if (kafka == null) {
-            log.warn("no Kafka client for region {}, skip notification {}", region, key);
+        KafkaClient kafka;
+        try {
+            kafka = registry.client(region, ClientType.KAFKA, KafkaClient.class);
+        } catch (IllegalArgumentException e) {
+            log.warn("no Kafka client for region {}, skip notification {}: {}", region, key, e.getMessage());
             return;
         }
         kafka.send(region.value() + "-migration-notify", key + ":" + payload);

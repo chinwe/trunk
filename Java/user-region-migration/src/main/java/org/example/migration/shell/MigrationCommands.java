@@ -199,5 +199,11 @@ public class MigrationCommands {
                 RegionName region, org.example.migration.domain.ClientType type, Class<C> clazz) {
             return registry.client(region, type, clazz);
         }
+
+        @Override
+        public <C extends org.example.migration.client.RegionClient> C client(
+                RegionName region, org.example.migration.domain.ClientType type, String instance, Class<C> clazz) {
+            return registry.client(region, type, instance, clazz);
+        }
     }
 }

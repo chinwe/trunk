@@ -18,19 +18,21 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * UserCutoverAction 测试：验证踢登录(删 Redis) + 发 Kafka 通知。
+ * UserCutoverAction 测试：验证踢登录(删 Redis session) + 发 Kafka 通知。
+ * Redis 用四参 ctx.client(region, REDIS, "session", RedisClient.class)，
+ * Kafka 保持三参（单实例中间件）。
  */
 class UserCutoverActionTest {
 
     @Test
-    @DisplayName("evict: 删除目标区 Redis 会话,发 Kafka 通知")
+    @DisplayName("evict: 删除目标区 Redis session,发 Kafka 通知")
     void shouldDeleteSessionsAndNotify() {
         RedisClient redis = mock(RedisClient.class);
         KafkaClient kafka = mock(KafkaClient.class);
         when(redis.scanKeysByTenants(any(), anyList())).thenReturn(List.of("session:t1:abc"));
         MigrationContext ctx = mock(MigrationContext.class);
         when(ctx.targetRegion()).thenReturn(RegionName.MYANMAR);
-        when(ctx.client(RegionName.MYANMAR, ClientType.REDIS, RedisClient.class)).thenReturn(redis);
+        when(ctx.client(RegionName.MYANMAR, ClientType.REDIS, "session", RedisClient.class)).thenReturn(redis);
         when(ctx.client(RegionName.MYANMAR, ClientType.KAFKA, KafkaClient.class)).thenReturn(kafka);
 
         UserCutoverAction action = new UserCutoverAction();

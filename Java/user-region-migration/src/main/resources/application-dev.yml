@@ -3,7 +3,9 @@ regions:
   singapore:
     mysql:
       business: { jdbc-url: jdbc:mysql://localhost:3306/sg_biz, username: ENC(placeholder), password: ENC(placeholder) }
-    redis: { host: localhost, port: 6379, password: ENC(placeholder) }
+    redis:
+      session: { host: localhost, port: 6379, password: ENC(placeholder) }
+      cache: { host: localhost, port: 6380, password: ENC(placeholder) }
     elasticsearch: { hosts: localhost:9200, credentials: ENC(placeholder) }
     s3: { endpoint: http://localhost:9000, bucket: sg-bucket, access-key: ENC(placeholder), secret-key: ENC(placeholder) }
     dynamodb: { endpoint: http://localhost:8000, region: ap-southeast-1, access-key: ENC(placeholder), secret-key: ENC(placeholder) }
@@ -11,7 +13,9 @@ regions:
   myanmar:
     mysql:
       business: { jdbc-url: jdbc:mysql://localhost:3306/mm_biz, username: ENC(placeholder), password: ENC(placeholder) }
-    redis: { host: localhost, port: 6380, password: ENC(placeholder) }
+    redis:
+      session: { host: localhost, port: 6381, password: ENC(placeholder) }
+      cache: { host: localhost, port: 6382, password: ENC(placeholder) }
     elasticsearch: { hosts: localhost:9201, credentials: ENC(placeholder) }
     s3: { endpoint: http://localhost:9000, bucket: mm-bucket, access-key: ENC(placeholder), secret-key: ENC(placeholder) }
     dynamodb: { endpoint: http://localhost:8000, region: ap-southeast-1, access-key: ENC(placeholder), secret-key: ENC(placeholder) }

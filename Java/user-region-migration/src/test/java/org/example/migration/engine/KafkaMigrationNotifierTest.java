@@ -37,10 +37,11 @@ class KafkaMigrationNotifierTest {
     @DisplayName("某 region 无 Kafka 客户端时跳过该侧通知(不抛异常)")
     void shouldSkipWhenNoKafkaClient() {
         RegionClientRegistry registry = mock(RegionClientRegistry.class);
-        when(registry.client(eq(RegionName.SINGAPORE), eq(ClientType.KAFKA), eq(KafkaClient.class))).thenReturn(null);
+        when(registry.client(eq(RegionName.SINGAPORE), eq(ClientType.KAFKA), eq(KafkaClient.class)))
+                .thenThrow(new IllegalArgumentException("no client registered"));
 
         KafkaMigrationNotifier notifier = new KafkaMigrationNotifier(registry);
-        // 不抛异常
+        // 不抛异常：被内部 catch 住
         notifier.notify(RegionName.SINGAPORE, RegionName.MYANMAR, "key", "payload");
     }
 }

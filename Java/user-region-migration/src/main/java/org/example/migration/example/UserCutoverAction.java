@@ -30,7 +30,7 @@ public class UserCutoverAction implements CutoverAction {
         log.info("cutover: evicting sessions for tenants {} in target region {}", tenantIds, ctx.targetRegion());
 
         // 踢登录：删除目标区 Redis 会话（示例：按租户扫描 session key）
-        RedisClient targetRedis = ctx.client(ctx.targetRegion(), ClientType.REDIS, RedisClient.class);
+        RedisClient targetRedis = ctx.client(ctx.targetRegion(), ClientType.REDIS, "session", RedisClient.class);
         List<String> sessionKeys = targetRedis.scanKeysByTenants("session:*:", tenantIds);
         for (String key : sessionKeys) {
             targetRedis.delete(key);

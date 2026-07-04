@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * UserMigrationTask 测试：验证方向无关迁移逻辑（读源→写目标→删源）。
+ * MySQL 用四参 ctx.client(region, MYSQL, "business", MySqlClient.class)。
  */
 class UserMigrationTaskTest {
 
@@ -31,8 +32,8 @@ class UserMigrationTaskTest {
         MigrationContext ctx = mock(MigrationContext.class);
         when(ctx.sourceRegion()).thenReturn(RegionName.SINGAPORE);
         when(ctx.targetRegion()).thenReturn(RegionName.MYANMAR);
-        when(ctx.client(RegionName.SINGAPORE, ClientType.MYSQL, MySqlClient.class)).thenReturn(source);
-        when(ctx.client(RegionName.MYANMAR, ClientType.MYSQL, MySqlClient.class)).thenReturn(target);
+        when(ctx.client(RegionName.SINGAPORE, ClientType.MYSQL, "business", MySqlClient.class)).thenReturn(source);
+        when(ctx.client(RegionName.MYANMAR, ClientType.MYSQL, "business", MySqlClient.class)).thenReturn(target);
 
         UserMigrationTask task = new UserMigrationTask();
         MigrationResult result = task.migrate(ctx, List.of("t1"), "p", "b");
@@ -51,8 +52,8 @@ class UserMigrationTaskTest {
         MigrationContext ctx = mock(MigrationContext.class);
         when(ctx.sourceRegion()).thenReturn(RegionName.SINGAPORE);
         when(ctx.targetRegion()).thenReturn(RegionName.MYANMAR);
-        when(ctx.client(RegionName.SINGAPORE, ClientType.MYSQL, MySqlClient.class)).thenReturn(source);
-        when(ctx.client(RegionName.MYANMAR, ClientType.MYSQL, MySqlClient.class)).thenReturn(target);
+        when(ctx.client(RegionName.SINGAPORE, ClientType.MYSQL, "business", MySqlClient.class)).thenReturn(source);
+        when(ctx.client(RegionName.MYANMAR, ClientType.MYSQL, "business", MySqlClient.class)).thenReturn(target);
 
         UserMigrationTask task = new UserMigrationTask();
         MigrationResult result = task.migrate(ctx, List.of("t1"), "p", "b");

@@ -22,9 +22,10 @@ public class RegionProperties {
     /** 单个 region 的所有中间件配置 */
     @Data
     public static class RegionConfig {
-        /** 数据源名 -> 数据源配置。key 如 "business"（业务库）/ "tool-state"（工具状态库） */
+        /** MySQL 实例名 -> 数据源配置。key 如 "business"（业务库）/ "open"（开放平台库） */
         private Map<String, DataSourceConfig> mysql;
-        private RedisConfig redis;
+        /** Redis 实例名 -> 配置。key 如 "session"（会话）/ "cache"（缓存） */
+        private Map<String, RedisConfig> redis;
         private ElasticsearchConfig elasticsearch;
         private S3Config s3;
         private DynamoDbConfig dynamodb;

@@ -317,6 +317,11 @@ public class MigrationEngine {
         }
 
         @Override
+        public <C extends RegionClient> C client(RegionName region, ClientType type, String instance, Class<C> clazz) {
+            return registry.client(region, type, instance, clazz);
+        }
+
+        @Override
         public MigrationProperties config() {
             return config;
         }
@@ -338,6 +343,11 @@ public class MigrationEngine {
 
         @Override
         public <C extends RegionClient> C client(RegionName region, ClientType type, Class<C> clazz) {
+            throw new UnsupportedOperationException("client registry not wired");
+        }
+
+        @Override
+        public <C extends RegionClient> C client(RegionName region, ClientType type, String instance, Class<C> clazz) {
             throw new UnsupportedOperationException("client registry not wired");
         }
 

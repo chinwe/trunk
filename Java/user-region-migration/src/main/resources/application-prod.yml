@@ -4,7 +4,8 @@ regions:
   singapore:
     mysql:
       business: { jdbc-url: ENC(TBD), username: ENC(TBD), password: ENC(TBD) }
-    redis: { host: ENC(TBD), port: 6379, password: ENC(TBD) }
+    redis:
+      default: { host: ENC(TBD), port: 6379, password: ENC(TBD) }
     elasticsearch: { hosts: ENC(TBD), credentials: ENC(TBD) }
     s3: { endpoint: ENC(TBD), bucket: ENC(TBD), access-key: ENC(TBD), secret-key: ENC(TBD) }
     dynamodb: { endpoint: ENC(TBD), region: ap-southeast-1, access-key: ENC(TBD), secret-key: ENC(TBD) }
@@ -12,7 +13,8 @@ regions:
   myanmar:
     mysql:
       business: { jdbc-url: ENC(TBD), username: ENC(TBD), password: ENC(TBD) }
-    redis: { host: ENC(TBD), port: 6379, password: ENC(TBD) }
+    redis:
+      default: { host: ENC(TBD), port: 6379, password: ENC(TBD) }
     elasticsearch: { hosts: ENC(TBD), credentials: ENC(TBD) }
     s3: { endpoint: ENC(TBD), bucket: ENC(TBD), access-key: ENC(TBD), secret-key: ENC(TBD) }
     dynamodb: { endpoint: ENC(TBD), region: ap-southeast-1, access-key: ENC(TBD), secret-key: ENC(TBD) }

@@ -76,7 +76,7 @@ public class RegionClientAutoConfiguration {
         cfg.getMysql().forEach((dsName, dsCfg) -> {
             DataSource dataSource = new DriverManagerDataSource(
                     dsCfg.getJdbcUrl(), dsCfg.getUsername(), dsCfg.getPassword());
-            registry.register(region, ClientType.MYSQL, new JdbcMySqlClient(dataSource));
+            registry.register(region, ClientType.MYSQL, dsName, new JdbcMySqlClient(dataSource));
             log.info("registered MySQL client [{}] for region {}", dsName, region);
         });
     }
@@ -85,18 +85,19 @@ public class RegionClientAutoConfiguration {
         if (cfg.getRedis() == null) {
             return;
         }
-        var rc = cfg.getRedis();
-        RedisStandaloneConfiguration redisCfg = new RedisStandaloneConfiguration(rc.getHost(), rc.getPort());
-        if (rc.getPassword() != null) {
-            redisCfg.setPassword(rc.getPassword());
-        }
-        LettuceConnectionFactory factory = new LettuceConnectionFactory(redisCfg);
-        factory.afterPropertiesSet();
-        RedisTemplate<String, String> template = new RedisTemplate<>();
-        template.setConnectionFactory(factory);
-        template.afterPropertiesSet();
-        registry.register(region, ClientType.REDIS, new SpringRedisClient(template));
-        log.info("registered Redis client for region {}", region);
+        cfg.getRedis().forEach((instanceName, rc) -> {
+            RedisStandaloneConfiguration redisCfg = new RedisStandaloneConfiguration(rc.getHost(), rc.getPort());
+            if (rc.getPassword() != null) {
+                redisCfg.setPassword(rc.getPassword());
+            }
+            LettuceConnectionFactory factory = new LettuceConnectionFactory(redisCfg);
+            factory.afterPropertiesSet();
+            RedisTemplate<String, String> template = new RedisTemplate<>();
+            template.setConnectionFactory(factory);
+            template.afterPropertiesSet();
+            registry.register(region, ClientType.REDIS, instanceName, new SpringRedisClient(template));
+            log.info("registered Redis client [{}] for region {}", instanceName, region);
+        });
     }
 
     private void registerEs(RegionClientRegistry registry, RegionName region, RegionProperties.RegionConfig cfg) {

@@ -40,9 +40,9 @@ public class UserMigrationTask implements TenantMigrationTask {
     public MigrationResult migrate(MigrationContext ctx, List<String> tenantIds,
                                    String product, String bizLine) {
         // 从源区读用户数据
-        MySqlClient source = ctx.client(ctx.sourceRegion(), ClientType.MYSQL, MySqlClient.class);
+        MySqlClient source = ctx.client(ctx.sourceRegion(), ClientType.MYSQL, "business", MySqlClient.class);
         // 写入目标区
-        MySqlClient target = ctx.client(ctx.targetRegion(), ClientType.MYSQL, MySqlClient.class);
+        MySqlClient target = ctx.client(ctx.targetRegion(), ClientType.MYSQL, "business", MySqlClient.class);
 
         log.info("migrating users for tenants {} from {} to {}",
                 tenantIds, ctx.sourceRegion(), ctx.targetRegion());
