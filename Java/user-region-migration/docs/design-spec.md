@@ -360,17 +360,18 @@ org.example.migration
 │   ├── RegionClientRegistry.java
 │   └── ClientFactory.java              # 客户端工厂 SPI
 ├── engine/                 # 框架内核
-│   ├── MigrationEngine.java            # 编排：分批/并发/断点/对账/切流
-│   ├── TenantBatcher.java              # 分批 + 线程池并发调度
+│   ├── MigrationEngine.java            # 编排：租户级并发/断点/对账/切流
+│   ├── TenantBatcher.java              # 租户级并发调度（ADR-0003）
+│   ├── RegistryMigrationContext.java   # MigrationContext 统一实现
 │   ├── RetryStrategy.java              # 重试策略（瞬时性异常重试，编程错误排除）
 │   ├── CheckpointStore.java            # 状态表读写（抽象）
-│   ├── JdbcCheckpointStore.java        # JDBC 实现（MySQL/H2）
+│   ├── JdbcCheckpointStore.java        # JDBC 实现（MySQL/H2，createRun 单事务）
 │   ├── InMemoryCheckpointStore.java    # 内存实现（测试用）
-│   ├── ReconciliationGate.java         # 总量对账闸门（抽象）
-│   ├── AlwaysPassReconciliationGate.java  # 默认通过（无 Counter 时）
-│   ├── CountReconciliationGate.java    # COUNT 校验（有 Counter 时）
-│   ├── ReconciliationCounter.java      # 对账计数器 SPI（业务实现）
-│   ├── TokenBucketRateLimiter.java     # 令牌桶限流（全局统一 QPS）
+│   ├── ReconciliationGate.java         # 对账闸门（抽象）
+│   ├── AlwaysPassReconciliationGate.java  # 默认通过（无 Checker 时）
+│   ├── CheckerReconciliationGate.java  # 委托业务自证一致性（ADR-0001）
+│   ├── ReconciliationChecker.java      # 对账校验器 SPI（业务实现）
+│   ├── TokenBucketRateLimiter.java     # 令牌桶限流（进程级单一全局 QPS）
 │   ├── MigrationNotifier.java          # 迁移通知器（抽象）
 │   ├── KafkaMigrationNotifier.java     # Kafka 通知实现
 │   ├── TenantScanner.java              # 租户扫描器（抽象 + MySQL 实现）
