@@ -46,6 +46,7 @@ public class MigrationEngine {
     // 从 Properties 解出的一次性参数
     private final int batchSize;
     private final int threads;
+    private final long tenantTimeoutMinutes;
 
     private MigrationEngine(Builder builder) {
         this.store = builder.store;
@@ -58,6 +59,7 @@ public class MigrationEngine {
         this.retryStrategy = builder.retryStrategy;
         this.batchSize = builder.batchSize;
         this.threads = builder.threads;
+        this.tenantTimeoutMinutes = builder.tenantTimeoutMinutes;
     }
 
     // ── 公共 API ──
@@ -73,7 +75,7 @@ public class MigrationEngine {
         store.createRun(run, request.getTenantIds());
 
         MigrationContext ctx = buildContext(request.getSourceRegion(), request.getTargetRegion());
-        TenantBatcher batcher = new TenantBatcher(batchSize, threads);
+        TenantBatcher batcher = new TenantBatcher(batchSize, threads, tenantTimeoutMinutes);
         batcher.processConcurrently(request.getTenantIds(), tenantId ->
                 migrateSingleTenant(task, ctx, runId, tenantId, request.getProduct(), request.getBizLine()));
 
@@ -98,7 +100,7 @@ public class MigrationEngine {
         }
 
         MigrationContext ctx = buildContext(run.getSourceRegion(), run.getTargetRegion());
-        TenantBatcher batcher = new TenantBatcher(batchSize, threads);
+        TenantBatcher batcher = new TenantBatcher(batchSize, threads, tenantTimeoutMinutes);
         batcher.processConcurrently(pending, tenantId ->
                 migrateSingleTenant(task, ctx, runId, tenantId, run.getProduct(), run.getBizLine()));
 
@@ -128,7 +130,7 @@ public class MigrationEngine {
         store.createRun(rollbackRun, tenantsToRollback);
 
         MigrationContext ctx = buildContext(rollbackRun.getSourceRegion(), rollbackRun.getTargetRegion());
-        TenantBatcher batcher = new TenantBatcher(batchSize, threads);
+        TenantBatcher batcher = new TenantBatcher(batchSize, threads, tenantTimeoutMinutes);
         batcher.processConcurrently(tenantsToRollback, tenantId ->
                 migrateSingleTenant(task, ctx, rollbackRunId, tenantId,
                         rollbackRun.getProduct(), rollbackRun.getBizLine()));
@@ -139,10 +141,11 @@ public class MigrationEngine {
 
     // ── 单租户处理 ──
 
-    /** 单租户迁移：限流 → 重试 → 状态更新（单租户隔离） */
+    /** 单租户迁移：限流 → 状态 RUNNING → 重试 → 状态更新（单租户隔离） */
     private void migrateSingleTenant(TenantMigrationTask task, MigrationContext ctx,
                                      String runId, String tenantId, String product, String bizLine) {
         try {
+            store.updateTenantState(runId, tenantId, TenantStatus.RUNNING, null);
             rateLimiter.acquire(1); // 全局限流：阻塞等待令牌
             retryStrategy.executeWithRetry(tenantId, () ->
                     task.migrate(ctx, List.of(tenantId), product, bizLine));
@@ -165,7 +168,7 @@ public class MigrationEngine {
         int processed = done.size() + failed.size();
         store.updateRunProgress(runId, processed, failed.size(), RunStatus.RUNNING);
 
-        if (gate.check(run)) {
+        if (gate.check(run, done)) {
             cutoverAction.evict(ctx, done, product, bizLine);
             notifier.notify(run.getSourceRegion(), run.getTargetRegion(),
                     "migration-done", "run=" + runId + ", tenants=" + done.size());
@@ -244,6 +247,7 @@ public class MigrationEngine {
         // 从 Properties 解出的参数（build() 中设置）
         private int batchSize;
         private int threads;
+        private long tenantTimeoutMinutes;
 
         private Builder(CheckpointStore store, ReconciliationGate gate, CutoverAction cutoverAction) {
             this.store = store;
@@ -309,6 +313,7 @@ public class MigrationEngine {
             }
             this.batchSize = properties.getDefaultBatchSize();
             this.threads = properties.getDefaultThreads();
+            this.tenantTimeoutMinutes = properties.getTenantTimeoutMinutes();
         }
 
         /** 把 "1s" / "500ms" 之类的字符串转为毫秒数（宽松容错） */
@@ -320,6 +325,7 @@ public class MigrationEngine {
                 if (s.endsWith("s")) return (long)(Double.parseDouble(s.replace("s", "").trim()) * 1000);
                 return Long.parseLong(s); // 裸数字视为毫秒
             } catch (NumberFormatException e) {
+                log.warn("invalid backoff format '{}', using default 1000ms", backoff);
                 return 1000L;
             }
         }

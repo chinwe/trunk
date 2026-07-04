@@ -1,6 +1,7 @@
 package org.example.migration.engine;
 
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * 令牌桶限流器。按补充速率（令牌/秒）补充令牌，容量上限固定。
@@ -41,16 +42,27 @@ public class TokenBucketRateLimiter {
     }
 
     /**
-     * 阻塞获取 n 个令牌。不足时轮询等待直到成功，防止 CPU 空转。
+     * 阻塞获取 n 个令牌。不足时根据补充速率精确等待，避免无效 CPU 空转。
      * 迁移批处理场景可接受阻塞——令牌补充速率已知，等待时间有限。
      */
     public void acquire(int n) {
-        while (!tryAcquire(n)) {
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("interrupted while waiting for rate limiter tokens", e);
+        while (true) {
+            if (tryAcquire(n)) {
+                return;
+            }
+            // 计算到达 n 个令牌所需时间，精确等待而非固定间隔轮询
+            State current = state.get();
+            double nowTokens = refill(current);
+            if (nowTokens >= n) {
+                continue; // CAS 可能失败，紧接重试
+            }
+            double needed = n - nowTokens;
+            long waitNanos = (long) (needed / refillTokensPerSecond * 1_000_000_000L);
+            // 限制等待范围：至少 1ms 避免过度自旋，最多 1s 防止异常配置
+            waitNanos = Math.max(1_000_000L, Math.min(waitNanos, 1_000_000_000L));
+            LockSupport.parkNanos(waitNanos);
+            if (Thread.interrupted()) {
+                throw new RuntimeException("interrupted while waiting for rate limiter tokens");
             }
         }
     }

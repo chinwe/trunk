@@ -17,6 +17,8 @@ public class MigrationProperties {
     private int defaultBatchSize = 50;
     /** 默认并发线程数（批次间并发） */
     private int defaultThreads = 4;
+    /** 单租户迁移超时（分钟），0 表示不设超时 */
+    private long tenantTimeoutMinutes = 30;
     /** 各中间件限流配置（当前保留，为未来分中间件限流预备） */
     private Map<String, RateLimitConfig> rateLimit;
     /** 全局限流 QPS（引擎层单个令牌桶）。默认 500，设 0 表示不限流 */

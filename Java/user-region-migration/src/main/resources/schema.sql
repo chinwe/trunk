@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS migration_run (
     target_region     VARCHAR(32)  NOT NULL,
     product           VARCHAR(64),
     biz_line          VARCHAR(64),
-    status            VARCHAR(16)  NOT NULL,              -- INIT/RUNNING/PAUSED/DONE/FAILED
+    status            VARCHAR(16)  NOT NULL,              -- RUNNING/DONE/FAILED
     total_tenants     INT,
     processed_tenants INT DEFAULT 0,
     failed_tenants    INT DEFAULT 0,

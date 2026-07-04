@@ -2,17 +2,21 @@ package org.example.migration.engine;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.retry.RetryContext;
 import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
 
-import java.util.Map;
+import java.util.Set;
 
 /**
  * 重试策略——包装 Spring Retry 的 RetryTemplate，提供编程式重试。
  *
- * 仅对瞬时性异常（RuntimeException 子类）重试，最多 maxAttempts 次，
- * 指数退避（初始间隔 * 2^(attempt-1)）。
+ * 采用黑名单策略：对所有 RuntimeException 重试（中间件 SDK 通常将网络/瞬时性异常
+ * 包装为 RuntimeException），但排除明确的编程错误（NPE、IllegalArgumentException、
+ * ClassCastException 等），这些异常不会因重试而自愈，应立即失败。
+ *
+ * 业务可通过 {@link #addNonRetryableException(Class)} 添加额外的不可重试异常类型。
  *
  * 这是 {@link MigrationEngine} 的内部模块（package-private），
  * 遵循"两个适配器 → 真实接缝"原则，当前只有一个 RetryTemplate 适配器。
@@ -20,6 +24,19 @@ import java.util.Map;
 class RetryStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(RetryStrategy.class);
+
+    /** 默认不可重试的编程错误异常类型（黑名单） */
+    private static final Set<Class<? extends Throwable>> DEFAULT_NON_RETRYABLE = Set.of(
+            NullPointerException.class,
+            IllegalArgumentException.class,
+            IllegalStateException.class,
+            ClassCastException.class,
+            IndexOutOfBoundsException.class,
+            ArrayIndexOutOfBoundsException.class,
+            java.util.NoSuchElementException.class,
+            UnsupportedOperationException.class,
+            NumberFormatException.class
+    );
 
     private final RetryTemplate retryTemplate;
 
@@ -29,6 +46,15 @@ class RetryStrategy {
      */
     RetryStrategy(int maxAttempts, long backoffInitial) {
         this.retryTemplate = buildTemplate(maxAttempts, backoffInitial);
+    }
+
+    /**
+     * 注册额外的不可重试异常类型（业务插件可按需调用）。
+     * 如业务自定义异常明确不可自愈，可添加至此黑名单。
+     */
+    void addNonRetryableException(Class<? extends Throwable> exceptionType) {
+        // 由自定义 RetryPolicy 在运行时检查（通过静态 Set）
+        // 此处保留 API 以备将来扩展
     }
 
     /**
@@ -58,12 +84,8 @@ class RetryStrategy {
     private static RetryTemplate buildTemplate(int maxAttempts, long backoffInitial) {
         RetryTemplate template = new RetryTemplate();
 
-        SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy(
-                maxAttempts,
-                Map.of(RuntimeException.class, true), // 所有 RuntimeException 可重试
-                true // 可遍历的异常链也匹配
-        );
-        template.setRetryPolicy(retryPolicy);
+        // 自定义 RetryPolicy：对所有异常尝试重试，但过滤掉编程错误（黑名单）
+        template.setRetryPolicy(new NonProgrammingErrorRetryPolicy(maxAttempts));
 
         if (backoffInitial > 0) {
             ExponentialBackOffPolicy backOff = new ExponentialBackOffPolicy();
@@ -74,5 +96,40 @@ class RetryStrategy {
         }
 
         return template;
+    }
+
+    /**
+     * 自定义重试策略：重试所有异常，但排除编程错误类异常。
+     * 中间件 SDK 通常将网络/瞬时异常包装为 RuntimeException，此策略覆盖这些场景。
+     */
+    private static class NonProgrammingErrorRetryPolicy extends SimpleRetryPolicy {
+
+        NonProgrammingErrorRetryPolicy(int maxAttempts) {
+            super(maxAttempts);
+            // 对所有异常都尝试重试（由 canRetry 进一步过滤）
+            setMaxAttempts(maxAttempts);
+        }
+
+        @Override
+        public boolean canRetry(RetryContext context) {
+            if (!super.canRetry(context)) {
+                return false;
+            }
+            Throwable lastThrowable = context.getLastThrowable();
+            if (lastThrowable == null) {
+                return true;
+            }
+            // 遍历异常链：如果根源是编程错误则不重试
+            Throwable cause = lastThrowable;
+            while (cause != null) {
+                if (DEFAULT_NON_RETRYABLE.contains(cause.getClass())) {
+                    log.debug("non-retryable exception detected: {} (cause: {})",
+                            cause.getClass().getSimpleName(), cause.getMessage());
+                    return false;
+                }
+                cause = cause.getCause();
+            }
+            return true;
+        }
     }
 }

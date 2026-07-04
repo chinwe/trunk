@@ -46,11 +46,15 @@ public class AwsS3Client implements S3Client {
 
     @Override
     public void copyObject(String sourceKey, S3Client targetClient, String targetKey) {
-        AwsS3Client tgt = (AwsS3Client) targetClient;
         CopyObjectRequest req = CopyObjectRequest.builder()
                 .sourceBucket(bucket).sourceKey(sourceKey)
-                .destinationBucket(tgt.bucket).destinationKey(targetKey).build();
+                .destinationBucket(targetClient.getBucket()).destinationKey(targetKey).build();
         s3.copyObject(req);
+    }
+
+    @Override
+    public String getBucket() {
+        return bucket;
     }
 
     @Override

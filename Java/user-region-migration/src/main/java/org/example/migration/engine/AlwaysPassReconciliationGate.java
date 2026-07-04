@@ -2,6 +2,8 @@ package org.example.migration.engine;
 
 import org.example.migration.domain.entity.MigrationRun;
 
+import java.util.List;
+
 /**
  * 默认对账闸门：总是通过。
  *
@@ -12,7 +14,7 @@ import org.example.migration.domain.entity.MigrationRun;
 public class AlwaysPassReconciliationGate implements ReconciliationGate {
 
     @Override
-    public boolean check(MigrationRun run) {
+    public boolean check(MigrationRun run, List<String> migratedTenantIds) {
         return true;
     }
 }

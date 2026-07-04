@@ -7,6 +7,8 @@ import org.example.migration.domain.entity.MigrationRun;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -27,10 +29,11 @@ class CountReconciliationGateTest {
     @Test
     @DisplayName("源与目标计数一致时通过")
     void shouldPassWhenCountsMatch() {
-        ReconciliationCounter counter = (region, run) -> 100L;
+        ReconciliationCounter counter = (region, r) -> 100L;
         CountReconciliationGate gate = new CountReconciliationGate(counter);
+        MigrationRun run = runBetween(RegionName.SINGAPORE, RegionName.MYANMAR);
 
-        boolean pass = gate.check(runBetween(RegionName.SINGAPORE, RegionName.MYANMAR));
+        boolean pass = gate.check(run, List.of("t1", "t2"));
 
         assertThat(pass).isTrue();
     }
@@ -38,11 +41,12 @@ class CountReconciliationGateTest {
     @Test
     @DisplayName("源与目标计数不一致时不通过")
     void shouldFailWhenCountsMismatch() {
-        ReconciliationCounter counter = (region, run) ->
+        ReconciliationCounter counter = (region, r) ->
                 region.equals(RegionName.SINGAPORE) ? 100L : 99L;
         CountReconciliationGate gate = new CountReconciliationGate(counter);
+        MigrationRun run = runBetween(RegionName.SINGAPORE, RegionName.MYANMAR);
 
-        boolean pass = gate.check(runBetween(RegionName.SINGAPORE, RegionName.MYANMAR));
+        boolean pass = gate.check(run, List.of("t1"));
 
         assertThat(pass).isFalse();
     }
@@ -51,8 +55,9 @@ class CountReconciliationGateTest {
     @DisplayName("未提供 counter 时默认通过(向后兼容)")
     void shouldPassByDefaultWhenNoCounter() {
         CountReconciliationGate gate = new CountReconciliationGate(null);
+        MigrationRun run = runBetween(RegionName.SINGAPORE, RegionName.MYANMAR);
 
-        boolean pass = gate.check(runBetween(RegionName.SINGAPORE, RegionName.MYANMAR));
+        boolean pass = gate.check(run, List.of("t1"));
 
         assertThat(pass).isTrue();
     }

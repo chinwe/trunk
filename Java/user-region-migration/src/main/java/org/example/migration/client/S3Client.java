@@ -7,6 +7,9 @@ import java.util.List;
  */
 public interface S3Client extends RegionClient {
 
+    /** 返回当前客户端所操作的 bucket 名称 */
+    String getBucket();
+
     /** 列出某租户关联的对象 key（{tenant} 占位用 tenantId 替换） */
     List<String> listKeysByTenants(String prefix, List<String> tenantIds);
 

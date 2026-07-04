@@ -51,7 +51,7 @@ class MiscCoverageTest {
     @DisplayName("AlwaysPassReconciliationGate 总是返回 true")
     void alwaysPassGate() {
         AlwaysPassReconciliationGate gate = new AlwaysPassReconciliationGate();
-        assertThat(gate.check(new MigrationRun())).isTrue();
+        assertThat(gate.check(new MigrationRun(), java.util.List.of())).isTrue();
     }
 
     @Test

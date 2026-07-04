@@ -3,6 +3,8 @@ package org.example.migration.engine;
 import org.example.migration.domain.RegionName;
 import org.example.migration.domain.entity.MigrationRun;
 import org.slf4j.Logger;
+
+import java.util.List;
 import org.slf4j.LoggerFactory;
 
 /**
@@ -22,7 +24,7 @@ public class CountReconciliationGate implements ReconciliationGate {
     }
 
     @Override
-    public boolean check(MigrationRun run) {
+    public boolean check(MigrationRun run, List<String> migratedTenantIds) {
         if (counter == null) {
             log.info("reconciliation gate: no counter configured, pass by default");
             return true;
@@ -30,8 +32,9 @@ public class CountReconciliationGate implements ReconciliationGate {
         long sourceCount = counter.count(run.getSourceRegion(), run);
         long targetCount = counter.count(run.getTargetRegion(), run);
         boolean pass = sourceCount == targetCount;
-        log.info("reconciliation gate: source={} count={}, target={} count={}, pass={}",
-                run.getSourceRegion(), sourceCount, run.getTargetRegion(), targetCount, pass);
+        log.info("reconciliation gate: source={} count={}, target={} count={}, migratedTenants={}, pass={}",
+                run.getSourceRegion(), sourceCount, run.getTargetRegion(), targetCount,
+                migratedTenantIds != null ? migratedTenantIds.size() : 0, pass);
         return pass;
     }
 }

@@ -75,7 +75,7 @@ public class MigrationCommands {
             @Option(longNames = "threads", description = "并发线程数", defaultValue = "4") int threads
     ) {
         var task = taskRegistry.findTask(taskName);
-        List<String> tenantIds = resolveTenants(source, tenants);
+        List<String> tenantIds = resolveTenants(source, target, tenants);
 
         MigrationEngine engine = buildEngine(taskName);
         MigrationRequest request = new MigrationRequest(
@@ -157,12 +157,12 @@ public class MigrationCommands {
             @Option(longNames = "target") String target,
             @Option(longNames = "tenants", description = "租户ID列表;不填则扫描源区") String tenants
     ) {
-        List<String> tenantIds = resolveTenants(source, tenants);
+        List<String> tenantIds = resolveTenants(source, target, tenants);
         return String.format("dry-run: source=%s, target=%s, tenantCount=%d", source, target, tenantIds.size());
     }
 
-    /** 解析租户：手动指定优先,否则扫描源区 */
-    private List<String> resolveTenants(String source, String tenants) {
+    /** 解析租户：手动指定优先，否则扫描源区 */
+    private List<String> resolveTenants(String source, String target, String tenants) {
         if (tenants != null && !tenants.isBlank()) {
             return Arrays.stream(tenants.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
         }
@@ -170,7 +170,8 @@ public class MigrationCommands {
             throw new IllegalArgumentException(
                     "no tenants specified and no TenantScanner configured; use --tenants or configure scanner");
         }
-        MigrationContext ctx = new SimpleContext(RegionName.of(source), RegionName.of(source),
+        MigrationContext ctx = new SimpleContext(
+                RegionName.of(source), RegionName.of(target),
                 clientRegistry, migrationProperties);
         return tenantScanner.scanSourceTenants(ctx);
     }
