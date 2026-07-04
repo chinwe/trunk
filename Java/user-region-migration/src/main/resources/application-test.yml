@@ -1,0 +1,19 @@
+# test 环境：单元/集成测试用。
+# 此处故意用明文占位（不带 ENC），避免 Jasypt 在测试环境尝试解密失败。
+regions:
+  singapore:
+    mysql:
+      business: { jdbc-url: jdbc:mysql://test/sg_biz, username: sg_user, password: sg_pwd }
+    redis: { host: test, port: 6379, password: redis-pwd }
+    elasticsearch: { hosts: test:9200, credentials: es-cred }
+    s3: { endpoint: http://test, bucket: sg-bucket, access-key: ak, secret-key: sk }
+    dynamodb: { endpoint: http://test, region: ap-southeast-1, access-key: ak, secret-key: sk }
+    kafka: { brokers: test:9092, topic-prefix: singapore }
+  myanmar:
+    mysql:
+      business: { jdbc-url: jdbc:mysql://test/mm_biz, username: mm_user, password: mm_pwd }
+    redis: { host: test, port: 6379, password: redis-pwd }
+    elasticsearch: { hosts: test:9200, credentials: es-cred }
+    s3: { endpoint: http://test, bucket: mm-bucket, access-key: ak, secret-key: sk }
+    dynamodb: { endpoint: http://test, region: ap-southeast-1, access-key: ak, secret-key: sk }
+    kafka: { brokers: test:9092, topic-prefix: myanmar }

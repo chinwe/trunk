@@ -1,0 +1,19 @@
+# prod 环境：实际生产 region 连接信息，密文通过 Jasypt 加密，占位待填充
+# 真实连接信息由运维通过加密工具生成 ENC(...) 后填入
+regions:
+  singapore:
+    mysql:
+      business: { jdbc-url: ENC(TBD), username: ENC(TBD), password: ENC(TBD) }
+    redis: { host: ENC(TBD), port: 6379, password: ENC(TBD) }
+    elasticsearch: { hosts: ENC(TBD), credentials: ENC(TBD) }
+    s3: { endpoint: ENC(TBD), bucket: ENC(TBD), access-key: ENC(TBD), secret-key: ENC(TBD) }
+    dynamodb: { endpoint: ENC(TBD), region: ap-southeast-1, access-key: ENC(TBD), secret-key: ENC(TBD) }
+    kafka: { brokers: ENC(TBD), topic-prefix: singapore }
+  myanmar:
+    mysql:
+      business: { jdbc-url: ENC(TBD), username: ENC(TBD), password: ENC(TBD) }
+    redis: { host: ENC(TBD), port: 6379, password: ENC(TBD) }
+    elasticsearch: { hosts: ENC(TBD), credentials: ENC(TBD) }
+    s3: { endpoint: ENC(TBD), bucket: ENC(TBD), access-key: ENC(TBD), secret-key: ENC(TBD) }
+    dynamodb: { endpoint: ENC(TBD), region: ap-southeast-1, access-key: ENC(TBD), secret-key: ENC(TBD) }
+    kafka: { brokers: ENC(TBD), topic-prefix: myanmar }

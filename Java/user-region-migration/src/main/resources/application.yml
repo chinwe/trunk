@@ -1,0 +1,31 @@
+# 公共配置（所有 profile 共享）
+spring:
+  application:
+    name: user-region-migration
+  main:
+    # Spring Shell 为交互式 CLI，关闭 web 服务器
+    web-application-type: none
+  shell:
+    interactive:
+      # 默认禁用交互式 REPL（避免测试/脚本场景阻塞等待 stdin）。
+      # 生产交互模式通过启动参数 --spring.shell.interactive.enabled=true 启用。
+      enabled: false
+
+# 迁移框架默认参数
+migration:
+  default-batch-size: 50
+  default-threads: 4
+  rate-limit:
+    mysql: { qps: 1000 }
+    redis: { qps: 1000 }
+    es: { qps: 500 }
+    s3: { qps: 200 }
+    dynamodb: { qps: 500 }
+  retry:
+    max-attempts: 3
+    backoff-initial: 1s
+
+# Jasypt 主密钥通过环境变量注入，密文可在配置中以 ENC(...) 形式出现
+jasypt:
+  encryptor:
+    password: ${JASYPT_MASTER_PASSWORD:dev-only-key}
