@@ -57,7 +57,7 @@ class MiscCoverageTest {
     @Test
     @DisplayName("MigrationNotifier.NO_OP 不抛异常")
     void noOpNotifier() {
-        MigrationNotifier.NO_OP.notify(null, null, "k", "p");
+        MigrationNotifier.NO_OP.notify(null, null, "p");
     }
 
     @Test
@@ -121,8 +121,8 @@ class MiscCoverageTest {
     }
 
     @Test
-    @DisplayName("MigrationProperties 限流/重试配置覆盖")
-    void migrationPropertiesRateLimitAndRetry() {
+    @DisplayName("MigrationProperties 重试配置覆盖")
+    void migrationPropertiesRetry() {
         MigrationProperties props = new MigrationProperties();
         props.setRateLimitQps(0); // 0 = 不限流
 
@@ -131,14 +131,9 @@ class MiscCoverageTest {
         retry.setBackoffInitial("500ms");
         props.setRetry(retry);
 
-        MigrationProperties.RateLimitConfig rl = new MigrationProperties.RateLimitConfig();
-        rl.setQps(100);
-        props.setRateLimit(java.util.Map.of("mysql", rl));
-
         assertThat(props.getRateLimitQps()).isZero();
         assertThat(props.getRetry().getMaxAttempts()).isEqualTo(3);
         assertThat(props.getRetry().getBackoffInitial()).isEqualTo("500ms");
-        assertThat(props.getRateLimit()).containsKey("mysql");
     }
 
     @Test

@@ -22,7 +22,12 @@ public interface TenantMigrationTask {
     /**
      * 唯一必须实现的方法 —— 方向无关的数据迁移。
      *
-     * 框架按租户分批（默认 50/批，可配）后调用此方法，业务自行查询并迁移数据。
+     * <p><b>幂等契约（必须遵守，ADR-0002）</b>：本方法必须幂等——同一租户被调用 N 次
+     * 与 1 次的结果等价。框架的 resume / retry / rollback 都可能对同一租户重复调用 migrate，
+     * 非幂等实现会在第一次重试时产生重复数据。建议用 {@code INSERT ... ON DUPLICATE KEY UPDATE} /
+     * {@code INSERT IGNORE} / 先删后插 / UPSERT 等模式；S3 等按键寻址的中间件天然幂等。
+     *
+     * <p>框架按租户分批（默认 50/批，可配）后调用此方法，业务自行查询并迁移数据。
      * 单租户内跨中间件的补偿回滚由业务在此方法内自管（框架无法代劳）。
      *
      * @param ctx       迁移上下文（含源/目标 region 客户端）

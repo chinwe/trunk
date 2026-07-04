@@ -24,7 +24,7 @@ public class KafkaMigrationNotifier implements MigrationNotifier {
     }
 
     @Override
-    public void notify(RegionName sourceRegion, RegionName targetRegion, String notificationKey, String payload) {
+    public void notify(RegionName sourceRegion, RegionName targetRegion, String payload) {
         // 向源区发迁出通知
         sendTo(sourceRegion, "migrated-out", payload);
         // 向目标区发迁入通知

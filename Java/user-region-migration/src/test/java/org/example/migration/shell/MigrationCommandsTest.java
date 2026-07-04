@@ -3,12 +3,14 @@ package org.example.migration.shell;
 import org.example.migration.client.RegionClientRegistry;
 import org.example.migration.config.MigrationProperties;
 import org.example.migration.domain.TenantStatus;
+import org.example.migration.engine.CheckpointStore;
 import org.example.migration.engine.FakeMigrationTask;
 import org.example.migration.engine.JdbcCheckpointStore;
 import org.example.migration.engine.MigrationNotifier;
 import org.example.migration.engine.RecordingCutoverAction;
-import org.example.migration.engine.ReconciliationCounter;
+import org.example.migration.engine.ReconciliationChecker;
 import org.example.migration.engine.TenantScanner;
+import org.example.migration.engine.TokenBucketRateLimiter;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -32,6 +34,7 @@ class MigrationCommandsTest {
 
     private TaskRegistry taskRegistry;
     private DataSource dataSource;
+    private CheckpointStore store;
     private MigrationCommands commands;
 
     @BeforeEach
@@ -46,13 +49,14 @@ class MigrationCommandsTest {
         ResourceDatabasePopulator pop = new ResourceDatabasePopulator();
         pop.addScript(new ClassPathResource("schema.sql"));
         pop.execute(dataSource);
+        store = new JdbcCheckpointStore(dataSource);
 
         taskRegistry = new TaskRegistry();
-        ObjectProvider<ReconciliationCounter> counterProvider = mock(ObjectProvider.class);
-        when(counterProvider.getIfAvailable()).thenReturn(null);
+        ObjectProvider<ReconciliationChecker> checkerProvider = mock(ObjectProvider.class);
+        when(checkerProvider.getIfAvailable()).thenReturn(null);
         commands = new MigrationCommands(
-                taskRegistry, dataSource, new RegionClientRegistry(), new MigrationProperties(),
-                MigrationNotifier.NO_OP, counterProvider,
+                taskRegistry, store, new RegionClientRegistry(), new MigrationProperties(),
+                MigrationNotifier.NO_OP, TokenBucketRateLimiter.noop(), checkerProvider,
                 new TenantScanner.MySqlTenantScanner("tenant"));
     }
 
@@ -174,11 +178,11 @@ class MigrationCommandsTest {
     @DisplayName("migrate: 未指定租户且无 scanner 配置时抛异常")
     void migrate_noTenantsNoScanner() {
         taskRegistry.register(new FakeMigrationTask("user-migration"));
-        ObjectProvider<org.example.migration.engine.ReconciliationCounter> cp = mock(ObjectProvider.class);
+        ObjectProvider<ReconciliationChecker> cp = mock(ObjectProvider.class);
         when(cp.getIfAvailable()).thenReturn(null);
         MigrationCommands cmd = new MigrationCommands(
-                taskRegistry, dataSource, new RegionClientRegistry(), new MigrationProperties(),
-                MigrationNotifier.NO_OP, cp, null);
+                taskRegistry, store, new RegionClientRegistry(), new MigrationProperties(),
+                MigrationNotifier.NO_OP, TokenBucketRateLimiter.noop(), cp, null);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
                         cmd.migrate("user-migration", "singapore", "myanmar", "p", "b", "", 50, 1))

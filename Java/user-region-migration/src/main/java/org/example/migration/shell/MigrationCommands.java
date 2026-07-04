@@ -3,13 +3,15 @@ package org.example.migration.shell;
 import org.example.migration.config.MigrationProperties;
 import org.example.migration.domain.RegionName;
 import org.example.migration.engine.AlwaysPassReconciliationGate;
-import org.example.migration.engine.CountReconciliationGate;
-import org.example.migration.engine.JdbcCheckpointStore;
+import org.example.migration.engine.CheckerReconciliationGate;
+import org.example.migration.engine.CheckpointStore;
 import org.example.migration.engine.MigrationEngine;
 import org.example.migration.engine.MigrationNotifier;
 import org.example.migration.engine.MigrationRequest;
-import org.example.migration.engine.ReconciliationCounter;
+import org.example.migration.engine.ReconciliationChecker;
+import org.example.migration.engine.RegistryMigrationContext;
 import org.example.migration.engine.TenantScanner;
+import org.example.migration.engine.TokenBucketRateLimiter;
 import org.example.migration.spi.CutoverAction;
 import org.example.migration.spi.MigrationContext;
 import org.example.migration.spi.result.VerifyResult;
@@ -19,7 +21,6 @@ import org.springframework.shell.command.annotation.Command;
 import org.springframework.shell.command.annotation.Option;
 import org.springframework.stereotype.Component;
 
-import javax.sql.DataSource;
 import java.util.Arrays;
 import java.util.List;
 
@@ -28,7 +29,7 @@ import java.util.List;
  *
  * 命令清单：
  *   migrate       正向迁移（自动扫描租户或手动指定）
- *   resume        从断点续传
+ *   resume        从断点续传（重做 PENDING + 孤儿 RUNNING）
  *   rollback      逆向回滚（方向对调复用 migrate）
  *   verify        对账（调用业务插件 verify 钩子）
  *   status        查询迁移状态
@@ -40,30 +41,33 @@ import java.util.List;
 public class MigrationCommands {
 
     private final TaskRegistry taskRegistry;
-    private final DataSource stateDataSource;
+    private final CheckpointStore store;
     private final RegionClientRegistry clientRegistry;
     private final MigrationProperties migrationProperties;
     private final MigrationNotifier notifier;
-    private final ObjectProvider<ReconciliationCounter> counterProvider;
+    private final TokenBucketRateLimiter rateLimiter;
+    private final ObjectProvider<ReconciliationChecker> checkerProvider;
     private final TenantScanner tenantScanner;
 
     public MigrationCommands(TaskRegistry taskRegistry,
-                             DataSource stateDataSource,
+                             CheckpointStore store,
                              RegionClientRegistry clientRegistry,
                              MigrationProperties migrationProperties,
                              MigrationNotifier notifier,
-                             ObjectProvider<ReconciliationCounter> counterProvider,
+                             TokenBucketRateLimiter rateLimiter,
+                             ObjectProvider<ReconciliationChecker> checkerProvider,
                              TenantScanner tenantScanner) {
         this.taskRegistry = taskRegistry;
-        this.stateDataSource = stateDataSource;
+        this.store = store;
         this.clientRegistry = clientRegistry;
         this.migrationProperties = migrationProperties;
         this.notifier = notifier;
-        this.counterProvider = counterProvider;
+        this.rateLimiter = rateLimiter;
+        this.checkerProvider = checkerProvider;
         this.tenantScanner = tenantScanner;
     }
 
-    @Command(command = "migrate", description = "正向迁移：扫租户→搬数据→总量闸门→切流")
+    @Command(command = "migrate", description = "正向迁移：扫租户→搬数据→零失败硬规则→对账闸门→切流")
     public String migrate(
             @Option(shortNames = 't', longNames = "task", description = "任务名") String taskName,
             @Option(shortNames = 's', longNames = "source", description = "源区域") String source,
@@ -71,7 +75,7 @@ public class MigrationCommands {
             @Option(longNames = "product", description = "产品标识", defaultValue = "") String product,
             @Option(longNames = "biz-line", description = "业务线标识", defaultValue = "") String bizLine,
             @Option(longNames = "tenants", description = "租户ID列表,逗号分隔;不填则自动扫描源区") String tenants,
-            @Option(longNames = "batch-size", description = "分批大小", defaultValue = "50") int batchSize,
+            @Option(longNames = "batch-size", description = "进度汇报粒度", defaultValue = "50") int batchSize,
             @Option(longNames = "threads", description = "并发线程数", defaultValue = "4") int threads
     ) {
         var task = taskRegistry.findTask(taskName);
@@ -86,7 +90,7 @@ public class MigrationCommands {
         return "Migration completed. runId=" + runId + ", status=" + engineStatus(runId);
     }
 
-    @Command(command = "resume", description = "从断点续传：只处理 PENDING 租户")
+    @Command(command = "resume", description = "从断点续传：重做 PENDING + 孤儿 RUNNING 租户")
     public String resume(
             @Option(longNames = "run-id") String runId,
             @Option(shortNames = 't', longNames = "task") String taskName
@@ -105,7 +109,14 @@ public class MigrationCommands {
         var task = taskRegistry.findTask(taskName);
         MigrationEngine engine = buildEngine(taskName);
         String rollbackRunId = engine.rollback(task, runId);
-        return "Rollback completed. rollbackRunId=" + rollbackRunId + ", status=" + engineStatus(rollbackRunId);
+
+        // 提示运维：原 run 的 FAILED 租户不会被框架回滚（业务 migrate 抛异常前可能已部分写入）
+        int forwardFailed = store.findTenantIdsByStatus(runId,
+                org.example.migration.domain.TenantStatus.FAILED).size();
+        String suffix = forwardFailed > 0
+                ? ". WARNING: " + forwardFailed + " FAILED tenant(s) in forward run NOT rolled back by framework"
+                : "";
+        return "Rollback completed. rollbackRunId=" + rollbackRunId + ", status=" + engineStatus(rollbackRunId) + suffix;
     }
 
     @Command(command = "verify", description = "对账：调用业务插件 verify 钩子")
@@ -114,13 +125,13 @@ public class MigrationCommands {
             @Option(shortNames = 't', longNames = "task") String taskName
     ) {
         var task = taskRegistry.findTask(taskName);
-        JdbcCheckpointStore store = new JdbcCheckpointStore(stateDataSource);
         var run = store.findRun(runId);
         if (run == null) {
             return "run not found: " + runId;
         }
         List<String> doneTenants = store.findTenantIdsByStatus(runId, org.example.migration.domain.TenantStatus.DONE);
-        MigrationContext ctx = new SimpleContext(run.getSourceRegion(), run.getTargetRegion(), clientRegistry, migrationProperties);
+        MigrationContext ctx = new RegistryMigrationContext(
+                run.getSourceRegion(), run.getTargetRegion(), clientRegistry, migrationProperties);
         VerifyResult result = task.verify(ctx, doneTenants, run.getProduct(), run.getBizLine());
         return "Verify runId=" + runId + ", passed=" + result.isPassed()
                 + ", checked=" + result.getCheckedCount() + ", mismatch=" + result.getMismatchCount();
@@ -131,7 +142,6 @@ public class MigrationCommands {
         if (runId == null || runId.isBlank()) {
             return "usage: status --run-id <id>";
         }
-        JdbcCheckpointStore store = new JdbcCheckpointStore(stateDataSource);
         var run = store.findRun(runId);
         if (run == null) {
             return "run not found: " + runId;
@@ -170,44 +180,26 @@ public class MigrationCommands {
             throw new IllegalArgumentException(
                     "no tenants specified and no TenantScanner configured; use --tenants or configure scanner");
         }
-        MigrationContext ctx = new SimpleContext(
-                RegionName.of(source), RegionName.of(target),
-                clientRegistry, migrationProperties);
+        MigrationContext ctx = new RegistryMigrationContext(
+                RegionName.of(source), RegionName.of(target), clientRegistry, migrationProperties);
         return tenantScanner.scanSourceTenants(ctx);
     }
 
     private MigrationEngine buildEngine(String taskName) {
         CutoverAction cutover = taskRegistry.findCutover(taskName);
-        ReconciliationCounter counter = counterProvider.getIfAvailable();
-        var gate = counter != null
-                ? new CountReconciliationGate(counter)
+        ReconciliationChecker checker = checkerProvider.getIfAvailable();
+        var gate = checker != null
+                ? new CheckerReconciliationGate(checker)
                 : new AlwaysPassReconciliationGate();
-        return MigrationEngine.builder(
-                new JdbcCheckpointStore(stateDataSource), gate, cutover)
+        return MigrationEngine.builder(store, gate, cutover)
                 .registry(clientRegistry)
                 .properties(migrationProperties)
                 .notifier(notifier)
+                .rateLimiter(rateLimiter)  // 进程级单例，多 run 共享（R3）
                 .build();
     }
 
     private String engineStatus(String runId) {
-        return new JdbcCheckpointStore(stateDataSource).findRun(runId).getStatus().name();
-    }
-
-    /** 简化上下文：命令侧构造,提供给 scanner/verify */
-    private record SimpleContext(RegionName sourceRegion, RegionName targetRegion,
-                                 RegionClientRegistry registry, MigrationProperties config)
-            implements MigrationContext {
-        @Override
-        public <C extends org.example.migration.client.RegionClient> C client(
-                RegionName region, org.example.migration.domain.ClientType type, Class<C> clazz) {
-            return registry.client(region, type, clazz);
-        }
-
-        @Override
-        public <C extends org.example.migration.client.RegionClient> C client(
-                RegionName region, org.example.migration.domain.ClientType type, String instance, Class<C> clazz) {
-            return registry.client(region, type, instance, clazz);
-        }
+        return store.findRun(runId).getStatus().name();
     }
 }

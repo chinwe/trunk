@@ -28,7 +28,7 @@ class KafkaMigrationNotifierTest {
         when(registry.client(eq(RegionName.MYANMAR), eq(ClientType.KAFKA), eq(KafkaClient.class))).thenReturn(mmKafka);
 
         KafkaMigrationNotifier notifier = new KafkaMigrationNotifier(registry);
-        notifier.notify(RegionName.SINGAPORE, RegionName.MYANMAR, "key", "payload");
+        notifier.notify(RegionName.SINGAPORE, RegionName.MYANMAR, "payload");
 
         verify(sgKafka).send(eq("singapore-migration-notify"), eq("migrated-out:payload"));
         verify(mmKafka).send(eq("myanmar-migration-notify"), eq("migrated-in:payload"));
@@ -43,6 +43,6 @@ class KafkaMigrationNotifierTest {
 
         KafkaMigrationNotifier notifier = new KafkaMigrationNotifier(registry);
         // 不抛异常：被内部 catch 住
-        notifier.notify(RegionName.SINGAPORE, RegionName.MYANMAR, "key", "payload");
+        notifier.notify(RegionName.SINGAPORE, RegionName.MYANMAR, "payload");
     }
 }

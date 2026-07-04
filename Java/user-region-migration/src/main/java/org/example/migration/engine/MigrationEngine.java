@@ -1,9 +1,7 @@
 package org.example.migration.engine;
 
-import org.example.migration.client.RegionClient;
 import org.example.migration.client.RegionClientRegistry;
 import org.example.migration.config.MigrationProperties;
-import org.example.migration.domain.ClientType;
 import org.example.migration.domain.Direction;
 import org.example.migration.domain.RegionName;
 import org.example.migration.domain.RunStatus;
@@ -75,7 +73,11 @@ public class MigrationEngine {
         store.createRun(run, request.getTenantIds());
 
         MigrationContext ctx = buildContext(request.getSourceRegion(), request.getTargetRegion());
-        TenantBatcher batcher = new TenantBatcher(batchSize, threads, tenantTimeoutMinutes);
+        // 尊重 request 携带的 batchSize/threads（命令行 --batch-size/--threads），
+        // 回退到引擎全局配置（migration.default-batch-size/default-threads）
+        int effBatch = request.getBatchSize() > 0 ? request.getBatchSize() : batchSize;
+        int effThreads = request.getThreads() > 0 ? request.getThreads() : threads;
+        TenantBatcher batcher = new TenantBatcher(effBatch, effThreads, tenantTimeoutMinutes);
         batcher.processConcurrently(request.getTenantIds(), tenantId ->
                 migrateSingleTenant(task, ctx, runId, tenantId, request.getProduct(), request.getBizLine()));
 
@@ -84,7 +86,10 @@ public class MigrationEngine {
     }
 
     /**
-     * 从断点续传：读取已有 run，只处理 PENDING 租户。
+     * 从断点续传：读取已有 run，处理 PENDING 与 RUNNING 租户。
+     *
+     * <p>RUNNING 也被重做——这是孤儿租户恢复（CONTEXT.md）：JVM 在 migrateSingleTenant
+     * 三步翻转中间崩溃会留下 RUNNING 租户，resume 视同 PENDING 重做（依赖业务 migrate 幂等，ADR-0002）。
      *
      * @return runId（与传入相同）
      */
@@ -94,14 +99,17 @@ public class MigrationEngine {
             throw new IllegalArgumentException("run not found: " + runId);
         }
 
-        List<String> pending = store.findTenantIdsByStatus(runId, TenantStatus.PENDING);
-        if (pending.isEmpty()) {
+        // 重做 PENDING + 卡住的 RUNNING（孤儿租户恢复）
+        List<String> todo = new java.util.ArrayList<>();
+        todo.addAll(store.findTenantIdsByStatus(runId, TenantStatus.PENDING));
+        todo.addAll(store.findTenantIdsByStatus(runId, TenantStatus.RUNNING));
+        if (todo.isEmpty()) {
             return runId;
         }
 
         MigrationContext ctx = buildContext(run.getSourceRegion(), run.getTargetRegion());
         TenantBatcher batcher = new TenantBatcher(batchSize, threads, tenantTimeoutMinutes);
-        batcher.processConcurrently(pending, tenantId ->
+        batcher.processConcurrently(todo, tenantId ->
                 migrateSingleTenant(task, ctx, runId, tenantId, run.getProduct(), run.getBizLine()));
 
         finalizeAfterMigration(run, ctx, run.getProduct(), run.getBizLine());
@@ -141,7 +149,12 @@ public class MigrationEngine {
 
     // ── 单租户处理 ──
 
-    /** 单租户迁移：限流 → 状态 RUNNING → 重试 → 状态更新（单租户隔离） */
+    /**
+     * 单租户迁移：状态 RUNNING → 限流 → 重试 → 状态更新（单租户隔离）。
+     *
+     * <p>状态写入本身也可能失败（DB 抖动）。把状态写入包进 try-catch，
+     * 避免单租户的状态异常击穿隔离、炸掉整个批次（R1）。
+     */
     private void migrateSingleTenant(TenantMigrationTask task, MigrationContext ctx,
                                      String runId, String tenantId, String product, String bizLine) {
         try {
@@ -149,16 +162,32 @@ public class MigrationEngine {
             rateLimiter.acquire(1); // 全局限流：阻塞等待令牌
             retryStrategy.executeWithRetry(tenantId, () ->
                     task.migrate(ctx, List.of(tenantId), product, bizLine));
-            store.updateTenantState(runId, tenantId, TenantStatus.DONE, null);
+            safeUpdateTenantState(runId, tenantId, TenantStatus.DONE, null);
         } catch (RuntimeException e) {
             log.warn("tenant {} migration failed: {}", tenantId, e.getMessage());
-            store.updateTenantState(runId, tenantId, TenantStatus.FAILED, e.getMessage());
+            safeUpdateTenantState(runId, tenantId, TenantStatus.FAILED, e.getMessage());
+        }
+    }
+
+    /** 状态写入的兜底：失败时记日志，不让单租户的状态异常冒泡炸掉批次 */
+    private void safeUpdateTenantState(String runId, String tenantId,
+                                       TenantStatus status, String errorContext) {
+        try {
+            store.updateTenantState(runId, tenantId, status, errorContext);
+        } catch (RuntimeException e) {
+            log.error("failed to persist tenant state: run={}, tenant={}, targetStatus={}",
+                    runId, tenantId, status, e);
         }
     }
 
     // ── 收尾 ──
 
-    /** 搬运后收尾：汇总计数 → 总量闸门 → 切流或停止 */
+    /**
+     * 搬运后收尾：汇总计数 → 零失败硬规则 → 对账闸门 → 切流或停止。
+     *
+     * <p>零失败硬规则（决策 #25）：有 FAILED 租户则不切流、Run 标 FAILED。
+     * 切流是不可逆动作（已发 Kafka、业务侧已清内存），跳过失败租户切流等于赌"该租户不重要"。
+     */
     private void finalizeAfterMigration(MigrationRun run, MigrationContext ctx,
                                         String product, String bizLine) {
         String runId = run.getRunId();
@@ -168,10 +197,17 @@ public class MigrationEngine {
         int processed = done.size() + failed.size();
         store.updateRunProgress(runId, processed, failed.size(), RunStatus.RUNNING);
 
+        // 零失败硬规则：有 FAILED 则不切流
+        if (!failed.isEmpty()) {
+            log.warn("run {} has {} failed tenants, skip cutover; mark run FAILED", runId, failed.size());
+            store.updateRunProgress(runId, processed, failed.size(), RunStatus.FAILED);
+            return;
+        }
+
         if (gate.check(run, done)) {
             cutoverAction.evict(ctx, done, product, bizLine);
             notifier.notify(run.getSourceRegion(), run.getTargetRegion(),
-                    "migration-done", "run=" + runId + ", tenants=" + done.size());
+                    "run=" + runId + ", tenants=" + done.size());
             store.updateRunProgress(runId, processed, failed.size(), RunStatus.DONE);
         } else {
             store.updateRunProgress(runId, processed, failed.size(), RunStatus.FAILED);
@@ -184,7 +220,9 @@ public class MigrationEngine {
         if (registry != null) {
             return new RegistryMigrationContext(source, target, registry, properties);
         }
-        return new SimpleMigrationContext(source, target);
+        // 无 registry：测试/回退场景。client 调用会抛 UnsupportedOperationException。
+        return new RegistryMigrationContext(source, target,
+                new RegionClientRegistry(), properties);
     }
 
     private MigrationRun buildRun(String runId, MigrationRequest request, Direction direction) {
@@ -333,54 +371,5 @@ public class MigrationEngine {
 
     // ── MigrationContext 实现 ──
 
-    /** 真实上下文：通过 RegionClientRegistry 提供客户端 */
-    private record RegistryMigrationContext(RegionName sourceRegion, RegionName targetRegion,
-                                            RegionClientRegistry registry, MigrationProperties config)
-            implements MigrationContext {
-
-        @Override
-        public RegionName sourceRegion() { return sourceRegion; }
-
-        @Override
-        public RegionName targetRegion() { return targetRegion; }
-
-        @Override
-        public <C extends RegionClient> C client(RegionName region, ClientType type, Class<C> clazz) {
-            return registry.client(region, type, clazz);
-        }
-
-        @Override
-        public <C extends RegionClient> C client(RegionName region, ClientType type, String instance, Class<C> clazz) {
-            return registry.client(region, type, instance, clazz);
-        }
-
-        @Override
-        public MigrationProperties config() { return config; }
-    }
-
-    /** 简化上下文：无 registry（测试/回退用） */
-    private record SimpleMigrationContext(RegionName sourceRegion, RegionName targetRegion)
-            implements MigrationContext {
-
-        @Override
-        public RegionName sourceRegion() { return sourceRegion; }
-
-        @Override
-        public RegionName targetRegion() { return targetRegion; }
-
-        @Override
-        public <C extends RegionClient> C client(RegionName region, ClientType type, Class<C> clazz) {
-            throw new UnsupportedOperationException("client registry not wired");
-        }
-
-        @Override
-        public <C extends RegionClient> C client(RegionName region, ClientType type, String instance, Class<C> clazz) {
-            throw new UnsupportedOperationException("client registry not wired");
-        }
-
-        @Override
-        public MigrationProperties config() {
-            throw new UnsupportedOperationException("config not wired");
-        }
-    }
+    /** 真实上下文：通过 RegionClientRegistry 提供客户端（实现见 {@link RegistryMigrationContext}） */
 }

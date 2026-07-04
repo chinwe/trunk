@@ -5,6 +5,7 @@ import org.example.migration.domain.TenantStatus;
 import org.example.migration.domain.entity.MigrationRun;
 import org.example.migration.domain.entity.MigrationTenantState;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.sql.Timestamp;
@@ -14,13 +15,18 @@ import java.util.List;
 /**
  * JDBC 版 CheckpointStore。基于 MySQL（测试用 H2）。
  * 行为与 InMemoryCheckpointStore 一致，共享同一套契约测试。
+ *
+ * <p>createRun 用单事务包裹（R4）：避免插到一半 DB 异常时留下"有 run 无部分 tenant_state"的脏数据。
  */
 public class JdbcCheckpointStore implements CheckpointStore {
 
     private final JdbcTemplate jdbc;
+    private final TransactionTemplate tx;
 
     public JdbcCheckpointStore(DataSource dataSource) {
         this.jdbc = new JdbcTemplate(dataSource);
+        this.tx = new TransactionTemplate(
+                new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource));
     }
 
     @Override
@@ -28,29 +34,32 @@ public class JdbcCheckpointStore implements CheckpointStore {
         LocalDateTime now = LocalDateTime.now();
         run.setStartedAt(now);
         run.setUpdatedAt(now);
-        jdbc.update("""
-                INSERT INTO migration_run
-                  (run_id, task_name, direction, source_region, target_region,
-                   product, biz_line, status, total_tenants, processed_tenants, failed_tenants,
-                   started_at, updated_at, error_context, parent_run_id)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                run.getRunId(), run.getTaskName(), run.getDirection().name(),
-                run.getSourceRegion().value(), run.getTargetRegion().value(),
-                run.getProduct(), run.getBizLine(), run.getStatus().name(),
-                run.getTotalTenants(), 0, 0,
-                Timestamp.valueOf(now), Timestamp.valueOf(now),
-                run.getErrorContext(), run.getParentRunId());
-
-        for (String tenantId : tenantIds) {
+        // 单事务：run 行 + 全部 tenant_state 行要么全成功要么全回滚
+        tx.executeWithoutResult(status -> {
             jdbc.update("""
-                    INSERT INTO migration_tenant_state
-                      (run_id, tenant_id, status, error_context, updated_at)
-                    VALUES (?,?,?,?,?)
+                    INSERT INTO migration_run
+                      (run_id, task_name, direction, source_region, target_region,
+                       product, biz_line, status, total_tenants, processed_tenants, failed_tenants,
+                       started_at, updated_at, error_context, parent_run_id)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
-                    run.getRunId(), tenantId, TenantStatus.PENDING.name(),
-                    null, Timestamp.valueOf(now));
-        }
+                    run.getRunId(), run.getTaskName(), run.getDirection().name(),
+                    run.getSourceRegion().value(), run.getTargetRegion().value(),
+                    run.getProduct(), run.getBizLine(), run.getStatus().name(),
+                    run.getTotalTenants(), 0, 0,
+                    Timestamp.valueOf(now), Timestamp.valueOf(now),
+                    run.getErrorContext(), run.getParentRunId());
+
+            for (String tenantId : tenantIds) {
+                jdbc.update("""
+                        INSERT INTO migration_tenant_state
+                          (run_id, tenant_id, status, error_context, updated_at)
+                        VALUES (?,?,?,?,?)
+                        """,
+                        run.getRunId(), tenantId, TenantStatus.PENDING.name(),
+                        null, Timestamp.valueOf(now));
+            }
+        });
     }
 
     @Override

@@ -13,20 +13,15 @@ spring:
 
 # 迁移框架默认参数
 migration:
-  default-batch-size: 50
-  default-threads: 4
-  rate-limit-qps: 500
-  rate-limit:
-    mysql: { qps: 1000 }
-    redis: { qps: 1000 }
-    es: { qps: 500 }
-    s3: { qps: 200 }
-    dynamodb: { qps: 500 }
+  default-batch-size: 50              # 进度汇报粒度（每完成 N 个租户打一次日志）
+  default-threads: 4                  # 租户级并发度
+  rate-limit-qps: 500                 # 进程级单一全局 QPS
   retry:
     max-attempts: 3
     backoff-initial: 1s
 
-# Jasypt 主密钥通过环境变量注入，密文可在配置中以 ENC(...) 形式出现
+# Jasypt 主密钥必须通过环境变量 JASYPT_MASTER_PASSWORD 注入。
+# 不设默认值：生产忘配会启动失败（fail-fast），优于静默用弱密钥。
 jasypt:
   encryptor:
-    password: ${JASYPT_MASTER_PASSWORD:dev-only-key}
+    password: ${JASYPT_MASTER_PASSWORD}

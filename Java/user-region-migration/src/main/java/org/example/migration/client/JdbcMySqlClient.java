@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
 import java.util.List;
+import java.util.Map;
 
 /**
  * MySQL 客户端的 JDBC 适配器实现。
@@ -29,6 +30,11 @@ public class JdbcMySqlClient implements MySqlClient {
     public List<?> queryByTenants(String sql, List<String> tenantIds) {
         String prepared = expandInPlaceholder(sql, tenantIds.size());
         return jdbc.queryForList(prepared, tenantIds.toArray());
+    }
+
+    @Override
+    public List<Map<String, Object>> queryForList(String sql, Object... args) {
+        return jdbc.queryForList(sql, args);
     }
 
     @Override

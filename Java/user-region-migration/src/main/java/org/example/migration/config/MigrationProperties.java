@@ -3,34 +3,25 @@ package org.example.migration.config;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import java.util.Map;
-
 /**
- * 迁移框架运行参数：分批大小、并发线程数、各中间件限流、重试策略。
+ * 迁移框架运行参数：分批大小、并发线程数、限流、重试策略。
  * 对应 application.yml 的 migration.* 结构。
  */
 @Data
 @ConfigurationProperties(prefix = "migration")
 public class MigrationProperties {
 
-    /** 默认租户分批大小（每批租户数） */
+    /** 进度汇报粒度（每完成 N 个租户打一次日志）。注意：不再驱动并发，见 ADR-0003 */
     private int defaultBatchSize = 50;
-    /** 默认并发线程数（批次间并发） */
+    /** 租户级并发线程数 */
     private int defaultThreads = 4;
     /** 单租户迁移超时（分钟），0 表示不设超时 */
     private long tenantTimeoutMinutes = 30;
-    /** 各中间件限流配置（当前保留，为未来分中间件限流预备） */
-    private Map<String, RateLimitConfig> rateLimit;
-    /** 全局限流 QPS（引擎层单个令牌桶）。默认 500，设 0 表示不限流 */
+    /** 进程级单一令牌桶的全局 QPS。默认 500，设 0 表示不限流。
+     *  按中间件类型分别配 QPS 的设想已撤销（曾长期未实现，误导用户，详见 design-spec 实现差异说明）。 */
     private int rateLimitQps = 500;
     /** 重试策略 */
     private RetryConfig retry;
-
-    /** 单中间件限流配置 */
-    @Data
-    public static class RateLimitConfig {
-        private int qps;
-    }
 
     /** 重试策略配置 */
     @Data

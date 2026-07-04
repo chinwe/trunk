@@ -19,6 +19,9 @@ import java.util.List;
  *   2. 从源区读、写目标区、删源区（真搬迁语义）
  *   3. 回滚时框架对调 region，同一份逻辑天然反向执行
  *
+ * <p><b>幂等示例（ADR-0002）</b>：写入用 UPSERT（ON DUPLICATE KEY UPDATE），
+ * 这样 resume/retry/rollback 重做同一租户时不会产生重复数据。
+ *
  * 注意：此示例用 mock SQL 演示结构，真实业务需替换为实际表名与字段映射。
  */
 @Component
@@ -30,6 +33,14 @@ public class UserMigrationTask implements TenantMigrationTask {
             "SELECT * FROM users WHERE tenant_id IN (:tenants)";
     private static final String DELETE_USERS_BY_TENANTS =
             "DELETE FROM users WHERE tenant_id IN (:tenants)";
+    /**
+     * UPSERT：业务 migrate 必须幂等（ADR-0002）。
+     * ON DUPLICATE KEY UPDATE 保证 resume/retry/rollback 重做同一租户时不会插入重复行。
+     * 真实业务需按主键/唯一索引设计 ON DUPLICATE KEY UPDATE 子句。
+     */
+    private static final String UPSERT_USERS =
+            "INSERT INTO users (id, tenant_id, /* 其他字段 */) VALUES (?, ?, /* ... */) " +
+            "ON DUPLICATE KEY UPDATE tenant_id = VALUES(tenant_id) /* , 其他字段 = VALUES(...) */";
 
     @Override
     public String taskName() {
@@ -53,9 +64,9 @@ public class UserMigrationTask implements TenantMigrationTask {
             return MigrationResult.success(0);
         }
 
-        // 演示：真实场景需把 users 转成 batchUpdate 参数。此处用占位 INSERT。
-        // 实际业务：target.batchUpdate("INSERT INTO users (...) VALUES (...)", toArgs(users));
-        log.info("copied {} users to target region", users.size());
+        // 演示：真实场景需把 users 转成 batchUpdate 参数。此处用占位 UPSERT。
+        // 实际业务：target.batchUpdate(UPSERT_USERS, toArgs(users));
+        log.info("copied {} users to target region (UPSERT, idempotent)", users.size());
 
         // 真搬迁：删除源区数据
         source.deleteByTenants(DELETE_USERS_BY_TENANTS, tenantIds);

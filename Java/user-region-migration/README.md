@@ -39,7 +39,7 @@ java -jar target/user-region-migration-1.0-SNAPSHOT.jar --spring.shell.interacti
 migrate    --task <name> -s <region> --target <region>
            [--product <p>] [--biz-line <b>]
            [--tenants <t1,t2,...>] [--batch-size 50] [--threads 4]
-  正向迁移：扫租户(或手动指定)→搬数据→总量闸门→切流
+  正向迁移：扫租户(或手动指定)→搬数据→零失败硬规则→对账闸门→切流
   短选项：-t <name> = --task, -s <region> = --source
 
 rollback   --run-id <id> -t <name>
@@ -90,7 +90,10 @@ public class UserMigrationTask implements TenantMigrationTask {
 
         // 从源区读 → 写目标区 → 删源区（真搬迁）
         List<?> users = source.queryByTenants("SELECT * FROM users WHERE tenant_id IN ...", tenantIds);
-        // target.batchUpdate("INSERT INTO users ...", toArgs(users));
+        // 【幂等契约 ADR-0002】写入必须幂等：用 UPSERT 而非 INSERT。
+        // resume/retry/rollback 都可能对同一租户重复调用 migrate，
+        // 非幂等 INSERT 会在第一次重试时插入重复行。
+        // target.batchUpdate("INSERT INTO users (...) VALUES (...) ON DUPLICATE KEY UPDATE ...", toArgs(users));
         source.deleteByTenants("DELETE FROM users WHERE tenant_id IN ...", tenantIds);
 
         return MigrationResult.success(users.size());
@@ -133,7 +136,17 @@ public class UserCutoverAction implements CutoverAction {
 
 业务 migrate 内部"从 source 读 → 写 target → 删 source"的逻辑，在回滚时天然变成"从缅甸读 → 写新加坡 → 删缅甸"。**不要写两个方向的方法。**
 
-### 4. 单租户内跨中间件的补偿回滚
+### 4. 幂等契约（必读）
+
+业务 `migrate` **必须幂等**——同一租户被调用 N 次与 1 次结果等价（ADR-0002）。这是框架"可恢复/可逆"承诺的数学前提：
+
+- `resume` 会重做 PENDING 与卡在 RUNNING 的孤儿租户（崩溃在中间态的租户，依赖幂等才能安全重做）；
+- `RetryStrategy` 在瞬时失败后重试同一租户；
+- `rollback` 对原 DONE 租户反向再调一次 migrate。
+
+建议用 `INSERT ... ON DUPLICATE KEY UPDATE` / `INSERT IGNORE` / 先删后插；S3 等按键寻址的中间件天然幂等。**非幂等的 INSERT 会在第一次 resume/retry 时产生重复数据。**
+
+### 5. 单租户内跨中间件的补偿回滚
 
 框架不碰单租户内部事务（跨中间件无分布式事务）。业务在 migrate 内自管补偿：
 
@@ -187,26 +200,31 @@ public class CustomTenantScanner implements TenantScanner {
 }
 ```
 
-### 对账计数器（ReconciliationCounter SPI）
+### 对账校验器（ReconciliationChecker SPI）
 
-`migrate` 命令的切流前总量闸门依赖 `ReconciliationCounter` 做 COUNT 级校验。框架不提供默认实现——业务需实现并注册为 Spring Bean：
+`migrate` 命令切流前调用 `ReconciliationChecker` 做一致性校验。**算法由业务自证**（ADR-0001）——业务可用 count 差、checksum、抽样或任意方式证明源/目标一致，框架只接受二值判定。框架不提供默认实现——业务需实现并注册为 Spring Bean：
 
 ```java
 @Component
-public class UserReconciliationCounter implements ReconciliationCounter {
+public class UserReconciliationChecker implements ReconciliationChecker {
     @Override
-    public long count(RegionName region, MigrationRun run) {
-        // 统计指定 region 在本次迁移范围内的记录数（如 MySQL COUNT）
+    public boolean consistent(MigrationRun run, List<String> migratedTenantIds) {
+        // 业务自证:本次迁移范围内的数据在源/目标 region 间是否一致
+        // 可用 count 差、checksum、抽样、逐条比对或组合
     }
 }
 ```
 
-- 已注册 → `CountReconciliationGate` 校验源/目标计数一致才切流
+- 已注册 → `CheckerReconciliationGate` 委托业务自证，通过才切流
 - 未注册 → `AlwaysPassReconciliationGate` 默认通过（不阻塞）
+
+> **为什么不是"count 源 vs 目标相等"？** 业务 migrate 是真搬迁（删源）语义，被搬的数据在源区已删，源 count ≈ 0、目标 count = N，"相等"在数学上不成立。业务自证一致性让算法贴合具体数据模型。
+
+> **零失败硬规则**：即使 ReconciliationChecker 通过，只要本次 run 有任意 FAILED 租户，框架也不会切流、Run 标 FAILED（切流不可逆，跳过失败租户切流等于赌"该租户不重要"）。失败租户可被 `resume` 重试（依赖业务 migrate 幂等）。
 
 ### 令牌桶限流
 
-框架内置 `TokenBucketRateLimiter`（CAS 实现），按 `migration.rate-limit-qps` 配置统一限流（默认 500 QPS），每租户处理前需获取令牌。`rate-limit.<type>.qps` 字段已预留用于后续按中间件类型细粒度限流。
+框架内置 `TokenBucketRateLimiter`（CAS 实现），按 `migration.rate-limit-qps` 配置**进程级单一全局 QPS**（默认 500 QPS），每租户处理前需获取令牌。多 run 并发时共享同一令牌桶，全局 QPS 真正受控。设为 0 表示不限流。
 
 ### 通知器（MigrationNotifier）
 
@@ -221,10 +239,11 @@ mvn test
 ```
 
 测试覆盖：
-- **引擎核心行为**（TDD）：单租户隔离、租户级断点续传、切流总量闸门、全流程编排、回滚方向无关
-- **状态层契约**：CheckpointStore 的 run/租户状态管理
+- **引擎核心行为**（TDD）：单租户隔离、租户级断点续传、孤儿租户恢复、零失败硬规则、切流对账闸门、全流程编排、回滚方向无关、租户级并发
+- **对账闸门**：业务自证一致性的委托与异常容错（业务 checker 抛异常视为不通过）
+- **状态层契约**：CheckpointStore 的 run/租户状态管理（InMemory + Jdbc 共享契约测试）
 - **配置绑定**：RegionProperties 多 region 多中间件结构
-- **客户端注册表**：按 (region, type) 查表
+- **客户端注册表**：按 (region, type, instance) 查表
 
 测试用 fake SPI + 内存 store，不依赖真实中间件，秒级完成。
 
@@ -240,7 +259,7 @@ org.example.migration
 │                 6 实现 + ClientFactory SPI）
 ├── engine/       框架内核（MigrationEngine / TenantBatcher / RetryStrategy /
 │                 CheckpointStore / ReconciliationGate / TenantScanner /
-│                 ReconciliationCounter / TokenBucketRateLimiter /
+│                 ReconciliationChecker / TokenBucketRateLimiter /
 │                 MigrationNotifier / MigrationRequest）
 ├── config/       配置绑定与自动装配（RegionProperties / MigrationProperties /
 │                 MigrationAutoConfiguration / RegionClientAutoConfiguration /

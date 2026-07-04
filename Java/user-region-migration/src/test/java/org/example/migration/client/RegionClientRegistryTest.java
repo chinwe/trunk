@@ -126,6 +126,7 @@ class RegionClientRegistryTest {
     static class FakeMySqlClient implements MySqlClient {
         @Override public Object raw() { return null; }
         @Override public java.util.List<?> queryByTenants(String sql, java.util.List<String> tenantIds) { return java.util.List.of(); }
+        @Override public java.util.List<java.util.Map<String, Object>> queryForList(String sql, Object... args) { return java.util.List.of(); }
         @Override public int[] batchUpdate(String sql, java.util.List<Object[]> argsList) { return new int[0]; }
         @Override public int deleteByTenants(String sql, java.util.List<String> tenantIds) { return 0; }
     }

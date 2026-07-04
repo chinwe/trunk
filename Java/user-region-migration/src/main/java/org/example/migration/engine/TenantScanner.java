@@ -29,14 +29,12 @@ public interface TenantScanner {
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public List<String> scanSourceTenants(MigrationContext ctx) {
+            // 注：这里用三参 client API（instance=default），tenant 表通常在 default 实例；
+            // 业务如把 tenant 表放在命名实例，可自定义 TenantScanner 实现。
             MySqlClient mysql = ctx.client(ctx.sourceRegion(), ClientType.MYSQL, MySqlClient.class);
-            // 复用 queryByTenants 不合适（它按租户过滤），这里直接用 raw JdbcTemplate 查全表
-            org.springframework.jdbc.core.JdbcTemplate jdbc =
-                    (org.springframework.jdbc.core.JdbcTemplate) mysql.raw();
-            List<Map<String, Object>> rows = jdbc.queryForList(
-                    "SELECT id FROM " + tableName);
+            // 用 MySqlClient.queryForList 而非 raw() 强转（D4，避免抽象泄漏）
+            List<Map<String, Object>> rows = mysql.queryForList("SELECT id FROM " + tableName);
             List<String> tenantIds = new ArrayList<>();
             for (Map<String, Object> row : rows) {
                 Object id = row.get("id");

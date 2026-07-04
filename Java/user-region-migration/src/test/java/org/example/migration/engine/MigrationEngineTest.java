@@ -102,6 +102,30 @@ class MigrationEngineTest {
             // 无 PENDING 残留
             assertThat(store.findTenantIdsByStatus(runId, TenantStatus.PENDING)).isEmpty();
         }
+
+        @Test
+        @DisplayName("C3 孤儿租户恢复:resume 重做卡在 RUNNING 的租户(崩溃在 migrateSingleTenant 中间态)")
+        void shouldRecoverOrphanRunningTenantsOnResume() {
+            // 模拟崩溃:pre-seed 一个 run,t1 已 DONE,t2 卡在 RUNNING(崩溃在 RUNNING→DONE 之间),t3 仍 PENDING
+            String runId = "user-migration-run-orphan";
+            preSeedRun(runId, List.of("t1", "t2", "t3"));
+            store.updateTenantState(runId, "t1", TenantStatus.DONE, null);
+            store.updateTenantState(runId, "t2", TenantStatus.RUNNING, null);  // 孤儿:崩溃遗留
+
+            FakeMigrationTask task = new FakeMigrationTask("user-migration");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            engine = buildEngine(new FakeReconciliationGate(true), cutover);
+
+            engine.resume(task, runId);
+
+            // 关键断言:RUNNING 孤儿 t2 与 PENDING 的 t3 都被重做(依赖业务幂等,ADR-0002)
+            assertThat(task.getMigratedTenants()).containsExactlyInAnyOrder("t2", "t3");
+            // 无 RUNNING/PENDING 残留,全部 DONE
+            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.RUNNING)).isEmpty();
+            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.PENDING)).isEmpty();
+            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.DONE))
+                    .containsExactlyInAnyOrder("t1", "t2", "t3");
+        }
     }
 
     @Nested
@@ -133,6 +157,23 @@ class MigrationEngineTest {
             assertThat(cutover.isEvictCalled()).isTrue();
             assertThat(cutover.getEvictedTenants()).containsExactlyInAnyOrder("t1", "t2");
             assertThat(store.findRun(runId).getStatus()).isEqualTo(RunStatus.DONE);
+        }
+
+        @Test
+        @DisplayName("C2 零失败硬规则:有 FAILED 租户时不切流且 run 标 FAILED,即便闸门会通过")
+        void shouldNotCutoverWhenAnyTenantFailedEvenIfGatePasses() {
+            // t2 失败,但闸门配置为通过（模拟业务自证不严谨的场景）
+            FakeMigrationTask task = new FakeMigrationTask("user-migration").failOn("t2");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            engine = buildEngine(new FakeReconciliationGate(true), cutover);
+
+            String runId = engine.migrate(task, request(List.of("t1", "t2", "t3")));
+
+            // 关键断言:即使闸门会通过,有 FAILED 也不切流
+            assertThat(cutover.isEvictCalled()).isFalse();
+            assertThat(store.findRun(runId).getStatus()).isEqualTo(RunStatus.FAILED);
+            // 失败租户记录在案,可被后续 resume 重试(依赖业务幂等,ADR-0002)
+            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.FAILED)).containsExactly("t2");
         }
     }
 

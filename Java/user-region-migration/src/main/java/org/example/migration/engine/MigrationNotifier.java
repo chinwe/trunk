@@ -12,13 +12,12 @@ public interface MigrationNotifier {
     /**
      * 发送迁移通知。
      *
-     * @param sourceRegion    迁出区域
-     * @param targetRegion    迁入区域
-     * @param notificationKey 通知键（业务约定，如 "tenant-migrated-out" / "tenant-migrated-in"）
-     * @param payload         通知内容
+     * @param sourceRegion 迁出区域
+     * @param targetRegion 迁入区域
+     * @param payload      通知内容
      */
-    void notify(RegionName sourceRegion, RegionName targetRegion, String notificationKey, String payload);
+    void notify(RegionName sourceRegion, RegionName targetRegion, String payload);
 
     /** 空实现：未配置通知器时的兜底 */
-    MigrationNotifier NO_OP = (s, t, k, p) -> { };
+    MigrationNotifier NO_OP = (s, t, p) -> { };
 }

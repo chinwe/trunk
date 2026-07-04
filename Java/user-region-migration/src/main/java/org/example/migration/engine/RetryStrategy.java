@@ -49,15 +49,6 @@ class RetryStrategy {
     }
 
     /**
-     * 注册额外的不可重试异常类型（业务插件可按需调用）。
-     * 如业务自定义异常明确不可自愈，可添加至此黑名单。
-     */
-    void addNonRetryableException(Class<? extends Throwable> exceptionType) {
-        // 由自定义 RetryPolicy 在运行时检查（通过静态 Set）
-        // 此处保留 API 以备将来扩展
-    }
-
-    /**
      * 执行带重试的迁移操作。
      *
      * @param tenantId 租户ID（仅用于日志上下文）
