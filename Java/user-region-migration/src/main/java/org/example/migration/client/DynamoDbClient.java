@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * DynamoDB 客户端。文档型数据迁移。
  */
-public non-sealed interface DynamoDbClient extends RegionClient {
+public interface DynamoDbClient extends RegionClient {
 
     /** 按租户ID列表查询 Item */
     List<?> queryByTenants(String tableName, List<String> tenantIds);

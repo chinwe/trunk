@@ -2,6 +2,7 @@ package org.example.migration.engine;
 
 import org.example.migration.config.MigrationProperties;
 import org.example.migration.domain.Direction;
+import org.example.migration.spi.TenantMigrationTask;
 import org.example.migration.domain.RegionName;
 import org.example.migration.domain.RunStatus;
 import org.example.migration.domain.TenantStatus;
@@ -188,6 +189,69 @@ class MigrationEngineTest {
             assertThat(rollbackRun.getTargetRegion()).isEqualTo(RegionName.SINGAPORE);
             // 回滚对原 DONE 租户再次调用 migrate（业务内反向执行）
             assertThat(task.getMigratedTenants()).containsExactlyInAnyOrder("t1", "t2");
+        }
+    }
+
+    @Nested
+    @DisplayName("并发与重试")
+    class ConcurrencyAndRetry {
+
+        @Test
+        @DisplayName("多线程并发时,所有租户仍被处理且单租户隔离成立")
+        void shouldHandleConcurrentBatchesWithIsolation() {
+            // 20 个租户,其中 2 个失败,4 线程并发
+            FakeMigrationTask task = new FakeMigrationTask("user-migration");
+            task.failOn("t5").failOn("t15");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            engine = buildEngine(new FakeReconciliationGate(true), cutover);
+
+            List<String> tenants = java.util.stream.Stream
+                    .iterate(1, i -> i + 1).limit(20).map(i -> "t" + i).toList();
+            String runId = engine.migrate(task, new org.example.migration.engine.MigrationRequest(
+                    "user-migration", RegionName.SINGAPORE, RegionName.MYANMAR,
+                    "p", "b", tenants, 5, 4));
+
+            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.DONE)).hasSize(18);
+            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.FAILED))
+                    .containsExactlyInAnyOrder("t5", "t15");
+            MigrationRun run = store.findRun(runId);
+            assertThat(run.getProcessedTenants()).isEqualTo(20);
+            assertThat(run.getFailedTenants()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("瞬时性异常会重试,最终成功则租户状态 DONE")
+        void shouldRetryTransientFailure() {
+            // 失败一次后成功的 fake 任务
+            TenantMigrationTask retryTask = new TenantMigrationTask() {
+                final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+
+                @Override
+                public String taskName() {
+                    return "retry-task";
+                }
+
+                @Override
+                public org.example.migration.spi.result.MigrationResult migrate(
+                        MigrationContext ctx, List<String> tenantIds, String product, String bizLine) {
+                    if (calls.incrementAndGet() == 1) {
+                        throw new RuntimeException("transient connection timeout");
+                    }
+                    return org.example.migration.spi.result.MigrationResult.success(tenantIds.size());
+                }
+            };
+
+            // 配置重试 3 次
+            MigrationProperties props = new MigrationProperties();
+            props.setRetry(new MigrationProperties.RetryConfig());
+
+            store = new InMemoryCheckpointStore();
+            engine = new MigrationEngine(store, new FakeReconciliationGate(true),
+                    new RecordingCutoverAction(), null, props, MigrationNotifier.NO_OP);
+
+            String runId = engine.migrate(retryTask, request(List.of("t1")));
+
+            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.DONE)).containsExactly("t1");
         }
     }
 

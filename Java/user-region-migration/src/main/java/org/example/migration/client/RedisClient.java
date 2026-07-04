@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * Redis 客户端。会话/缓存类数据迁移。
  */
-public non-sealed interface RedisClient extends RegionClient {
+public interface RedisClient extends RegionClient {
 
     /**
      * 按租户ID列表读取关联的 key 集合。

@@ -6,7 +6,7 @@ import java.util.List;
  * MySQL 客户端。封装跨区迁移高频操作。
  * 详细操作随业务插件需要补充。
  */
-public non-sealed interface MySqlClient extends RegionClient {
+public interface MySqlClient extends RegionClient {
 
     /**
      * 按租户ID列表查询业务记录。

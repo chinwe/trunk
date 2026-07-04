@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * Elasticsearch 客户端。索引数据迁移。
  */
-public non-sealed interface EsClient extends RegionClient {
+public interface EsClient extends RegionClient {
 
     /** 按租户ID列表查询索引文档 */
     List<?> searchByTenants(String index, List<String> tenantIds);
