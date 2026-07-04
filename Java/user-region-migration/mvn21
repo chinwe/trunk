@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# 用本机 JDK 21 运行 Maven，透传所有参数。
+# 用法: ./mvn21 clean test   或   ./mvn21 -o test -Dtest=XxxTest
+#
+# 项目编译目标为 JDK 21；本机默认 java 可能是更高版本（如 JDK 25），
+# 该脚本固定用 D:\jdk\jdk21.0.2_13 运行 Maven，避免 Lombok/Mockito 兼容问题。
+set -euo pipefail
+
+JDK21_HOME="D:\\jdk\\jdk21.0.2_13"
+
+if [ ! -d "$JDK21_HOME" ]; then
+  echo "ERROR: JDK 21 not found at $JDK21_HOME" >&2
+  echo "       请调整本脚本顶部的 JDK21_HOME 指向你的 JDK 21 安装路径" >&2
+  exit 1
+fi
+
+export JAVA_HOME="$JDK21_HOME"
+export PATH="$JAVA_HOME/bin:$PATH"
+
+exec mvn "$@"

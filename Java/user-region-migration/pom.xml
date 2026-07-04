@@ -11,7 +11,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.10</version>
+        <version>3.2.12</version>
         <relativePath/>
     </parent>
 
@@ -20,9 +20,7 @@
         <maven.compiler.release>${java.version}</maven.compiler.release>
         <spring-shell.version>3.2.8</spring-shell.version>
         <jasypt.version>3.0.5</jasypt.version>
-        <!-- 覆盖 Spring Boot 自带版本:Mockito 5.12+ 支持 JDK 25 -->
-        <mockito.version>5.12.0</mockito.version>
-        <byte-buddy.version>1.15.11</byte-buddy.version>
+        <lombok.version>1.18.36</lombok.version>
     </properties>
 
     <dependencies>
@@ -93,6 +91,13 @@
             <artifactId>commons-pool2</artifactId>
         </dependency>
 
+        <!-- Lombok: 简化 POJO 的 getter/setter/构造器 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- 测试栈（含 JUnit5 + Mockito + AssertJ） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -133,14 +138,37 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
             </plugin>
 
-            <!-- surefire: 合并 JaCoCo agent argLine 与 JDK25/ByteBuddy 实验参数 -->
+            <!-- surefire: 合并 JaCoCo agent argLine(留 @{argLine} 占位供 JaCoCo 注入) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>@{argLine} --enable-native-access=ALL-UNNAMED -Dnet.bytebuddy.experimental=true</argLine>
+                    <argLine>@{argLine}</argLine>
+                </configuration>
+            </plugin>
+
+            <!-- compiler: 显式声明 Lombok 注解处理器(JDK 25 需要显式配置) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
 

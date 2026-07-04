@@ -1,8 +1,11 @@
 package org.example.migration.spi.result;
 
+import lombok.Getter;
+
 /**
  * 单批租户对账结果。由业务插件的 verify 方法返回。
  */
+@Getter
 public class VerifyResult {
 
     private final boolean passed;
@@ -31,9 +34,4 @@ public class VerifyResult {
     public static VerifyResult unimplemented() {
         return new VerifyResult(true, 0, 0, "verify not implemented by task");
     }
-
-    public boolean isPassed() { return passed; }
-    public int getCheckedCount() { return checkedCount; }
-    public int getMismatchCount() { return mismatchCount; }
-    public String getDetail() { return detail; }
 }

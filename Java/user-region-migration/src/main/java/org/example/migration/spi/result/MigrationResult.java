@@ -1,8 +1,11 @@
 package org.example.migration.spi.result;
 
+import lombok.Getter;
+
 /**
  * 单批租户迁移结果。由业务插件的 migrate 方法返回，框架据此统计。
  */
+@Getter
 public class MigrationResult {
 
     private final boolean success;
@@ -24,8 +27,4 @@ public class MigrationResult {
     public static MigrationResult failure(String errorMessage) {
         return new MigrationResult(false, 0, errorMessage);
     }
-
-    public boolean isSuccess() { return success; }
-    public int getMigratedCount() { return migratedCount; }
-    public String getErrorMessage() { return errorMessage; }
 }
