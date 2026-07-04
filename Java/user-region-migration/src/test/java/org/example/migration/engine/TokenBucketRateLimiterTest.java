@@ -49,4 +49,26 @@ class TokenBucketRateLimiterTest {
         assertThat(limiter.tryAcquire(2)).isTrue();
         assertThat(limiter.tryAcquire(1)).isFalse();
     }
+
+    @Test
+    @DisplayName("阻塞获取 acquire 在令牌不足时等待后成功")
+    void shouldBlockUntilTokensAvailable() {
+        // 1 令牌,高补充速率,立即消耗后阻塞等待补充
+        TokenBucketRateLimiter limiter = new TokenBucketRateLimiter(1, 100); // 100/s 补充
+        assertThat(limiter.tryAcquire(1)).isTrue();
+        // acquire 阻塞等待直到 token 补充
+        limiter.acquire(1);
+        // 成功获取(不抛异常即通过)
+    }
+
+    @Test
+    @DisplayName("noop 限流器总是立刻通过,不阻塞不消耗")
+    void noopLimiterAlwaysPasses() {
+        TokenBucketRateLimiter limiter = TokenBucketRateLimiter.noop();
+        for (int i = 0; i < 1000; i++) {
+            assertThat(limiter.tryAcquire(1000)).isTrue();
+        }
+        // acquire 也不阻塞
+        limiter.acquire(1);
+    }
 }

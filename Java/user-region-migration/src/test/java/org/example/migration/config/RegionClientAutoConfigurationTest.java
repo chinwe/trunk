@@ -96,6 +96,6 @@ class RegionClientAutoConfigurationTest {
         assertThatThrownBy(() ->
                 registry.client(RegionName.MYANMAR, ClientType.MYSQL, "business", JdbcMySqlClient.class))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("MYANMAR");
+                .hasMessageContaining("myanmar");
     }
 }

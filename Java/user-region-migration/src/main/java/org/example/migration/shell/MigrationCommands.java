@@ -181,9 +181,12 @@ public class MigrationCommands {
         var gate = counter != null
                 ? new CountReconciliationGate(counter)
                 : new AlwaysPassReconciliationGate();
-        return new MigrationEngine(
-                new JdbcCheckpointStore(stateDataSource), gate, cutover,
-                clientRegistry, migrationProperties, notifier);
+        return MigrationEngine.builder(
+                new JdbcCheckpointStore(stateDataSource), gate, cutover)
+                .registry(clientRegistry)
+                .properties(migrationProperties)
+                .notifier(notifier)
+                .build();
     }
 
     private String engineStatus(String runId) {

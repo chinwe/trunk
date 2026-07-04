@@ -15,6 +15,7 @@ spring:
 migration:
   default-batch-size: 50
   default-threads: 4
+  rate-limit-qps: 500
   rate-limit:
     mysql: { qps: 1000 }
     redis: { qps: 1000 }

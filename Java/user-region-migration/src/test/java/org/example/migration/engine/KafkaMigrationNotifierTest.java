@@ -7,6 +7,7 @@ import org.example.migration.domain.RegionName;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -37,7 +38,7 @@ class KafkaMigrationNotifierTest {
     @DisplayName("某 region 无 Kafka 客户端时跳过该侧通知(不抛异常)")
     void shouldSkipWhenNoKafkaClient() {
         RegionClientRegistry registry = mock(RegionClientRegistry.class);
-        when(registry.client(eq(RegionName.SINGAPORE), eq(ClientType.KAFKA), eq(KafkaClient.class)))
+        when(registry.client(any(RegionName.class), eq(ClientType.KAFKA), eq(KafkaClient.class)))
                 .thenThrow(new IllegalArgumentException("no client registered"));
 
         KafkaMigrationNotifier notifier = new KafkaMigrationNotifier(registry);

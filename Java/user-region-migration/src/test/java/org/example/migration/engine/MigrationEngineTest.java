@@ -33,9 +33,9 @@ class MigrationEngineTest {
         store = new InMemoryCheckpointStore();
     }
 
-    /** 构造引擎：闸门与切流动作由具体测试注入 */
+    /** 构造引擎：闸门与切流动作由具体测试注入，其余依赖走 Builder 默认值 */
     private MigrationEngine buildEngine(ReconciliationGate gate, RecordingCutoverAction cutover) {
-        return new MigrationEngine(store, gate, cutover);
+        return MigrationEngine.builder(store, gate, cutover).build();
     }
 
     /** 默认迁移请求：3 个租户新加坡→缅甸 */
@@ -243,11 +243,16 @@ class MigrationEngineTest {
 
             // 配置重试 3 次
             MigrationProperties props = new MigrationProperties();
-            props.setRetry(new MigrationProperties.RetryConfig());
+            MigrationProperties.RetryConfig retryConfig = new MigrationProperties.RetryConfig();
+            retryConfig.setMaxAttempts(3);
+            retryConfig.setBackoffInitial("100ms");
+            props.setRetry(retryConfig);
 
             store = new InMemoryCheckpointStore();
-            engine = new MigrationEngine(store, new FakeReconciliationGate(true),
-                    new RecordingCutoverAction(), null, props, MigrationNotifier.NO_OP);
+            engine = MigrationEngine.builder(store, new FakeReconciliationGate(true),
+                    new RecordingCutoverAction())
+                    .properties(props)
+                    .build();
 
             String runId = engine.migrate(retryTask, request(List.of("t1")));
 

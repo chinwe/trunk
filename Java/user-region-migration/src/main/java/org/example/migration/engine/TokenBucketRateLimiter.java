@@ -40,6 +40,26 @@ public class TokenBucketRateLimiter {
         }
     }
 
+    /**
+     * 阻塞获取 n 个令牌。不足时轮询等待直到成功，防止 CPU 空转。
+     * 迁移批处理场景可接受阻塞——令牌补充速率已知，等待时间有限。
+     */
+    public void acquire(int n) {
+        while (!tryAcquire(n)) {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("interrupted while waiting for rate limiter tokens", e);
+            }
+        }
+    }
+
+    /** 不限制的占位限流器：总是立刻通过，用于未显式配置限流的场景 */
+    public static TokenBucketRateLimiter noop() {
+        return new TokenBucketRateLimiter(Integer.MAX_VALUE, Integer.MAX_VALUE);
+    }
+
     /** 根据时间差补充令牌（不超过容量） */
     private double refill(State s) {
         long now = System.nanoTime();

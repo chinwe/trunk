@@ -37,9 +37,9 @@ java -jar target/user-region-migration-1.0-SNAPSHOT.jar --spring.shell.interacti
 
 ```
 migrate    --task <name> --source <region> --target <region>
-           --product <p> --biz-line <b> --tenants <t1,t2,...>
-           [--batch-size 50] [--threads 4]
-  正向迁移：搬数据 → 总量闸门 → 切流
+           --product <p> --biz-line <b>
+           [--tenants <t1,t2,...>] [--batch-size 50] [--threads 4]
+  正向迁移：扫租户(或手动指定)→搬数据→总量闸门→切流
 
 rollback   --run-id <id> --task <name>
   逆向回滚（方向对调复用 migrate）
@@ -47,7 +47,7 @@ rollback   --run-id <id> --task <name>
 resume     --run-id <id> --task <name>
   从断点续传（只处理 PENDING 租户）
 
-verify     --run-id <id> [--sample 0.1] [--full]
+verify     --run-id <id> --task <name>
   对账（调用业务插件 verify 钩子）
 
 status     --run-id <id>
@@ -55,7 +55,12 @@ status     --run-id <id>
 
 tasks
   列出已注册业务插件
+
+dry-run    --source <region> --target <region> [--tenants <t1,t2,...>]
+  预估待迁移租户数（不写数据）
 ```
+
+`--tenants` 手动指定租户；不填则通过 TenantScanner 自动扫描源区。
 
 ---
 
@@ -150,6 +155,64 @@ public MigrationResult migrate(MigrationContext ctx, List<String> tenantIds, ...
 
 ---
 
+## 进阶功能
+
+### 多实例（MySQL/Redis）
+
+MySQL 和 Redis 支持在同一个 region 下注册多个命名实例（如 MySQL 的 `business`、`open` 库，Redis 的 `session`、`cache`）。业务通过四参 API 指定实例名：
+
+```java
+// 指定 MySQL 的 "business" 实例
+MySqlClient source = ctx.client(ctx.sourceRegion(), ClientType.MYSQL, "business", MySqlClient.class);
+// 指定 Redis 的 "session" 实例
+RedisClient redis = ctx.client(ctx.targetRegion(), ClientType.REDIS, "session", RedisClient.class);
+```
+
+ES/S3/DynamoDB/Kafka 等单实例中间件使用三参 API（内部自动填充 instance="default"）。
+
+### 租户扫描（TenantScanner SPI）
+
+迁移命令的 `--tenants` 为空时，框架通过 `TenantScanner` 从源区自动扫描待迁移租户：
+
+```java
+// 框架内置 MySQL 实现（默认查询 tenant 表）
+// 自定义实现：实现 TenantScanner 接口并声明为 Spring Bean
+@Component
+public class CustomTenantScanner implements TenantScanner {
+    @Override
+    public List<String> scanSourceTenants(MigrationContext ctx) {
+        // 从源区自定逻辑读取租户ID列表
+    }
+}
+```
+
+### 对账计数器（ReconciliationCounter SPI）
+
+`migrate` 命令的切流前总量闸门依赖 `ReconciliationCounter` 做 COUNT 级校验。框架不提供默认实现——业务需实现并注册为 Spring Bean：
+
+```java
+@Component
+public class UserReconciliationCounter implements ReconciliationCounter {
+    @Override
+    public long count(RegionName region, MigrationRun run) {
+        // 统计指定 region 在本次迁移范围内的记录数（如 MySQL COUNT）
+    }
+}
+```
+
+- 已注册 → `CountReconciliationGate` 校验源/目标计数一致才切流
+- 未注册 → `AlwaysPassReconciliationGate` 默认通过（不阻塞）
+
+### 令牌桶限流
+
+框架内置 `TokenBucketRateLimiter`（CAS 实现），各中间件按 `migration.rate-limit.<type>.qps` 配置分别限流，防止压垮源/目标中间件。
+
+### 通知器（MigrationNotifier）
+
+切流成功后框架通过 `MigrationNotifier` 向源区/目标区发送 Kafka 通知（默认实现 `KafkaMigrationNotifier`）。业务可实现 `MigrationNotifier` 接口并声明为 Spring Bean 覆盖默认行为。
+
+---
+
 ## 测试
 
 ```bash
@@ -171,12 +234,18 @@ mvn test
 ```
 org.example.migration
 ├── spi/          业务插件接口（TenantMigrationTask / CutoverAction / MigrationContext）
-├── client/       多中间件客户端抽象（sealed RegionClient + 6 子接口 + Registry）
-├── engine/       框架内核（MigrationEngine / CheckpointStore / ReconciliationGate）
-├── config/       配置绑定（RegionProperties / MigrationProperties）
-├── shell/        Spring Shell 命令 + TaskRegistry
-├── domain/       领域模型（RegionName / ClientType / entity）
-└── example/      参考实现（UserMigrationTask）
+│   └── result/   结果类型（MigrationResult / VerifyResult）
+├── client/       多中间件客户端抽象（RegionClient + 6 子接口 + Registry + 6 实现）
+├── engine/       框架内核（MigrationEngine / CheckpointStore / ReconciliationGate /
+│                 TenantScanner / ReconciliationCounter / TokenBucketRateLimiter /
+│                 MigrationNotifier / MigrationRequest）
+├── config/       配置绑定与自动装配（RegionProperties / MigrationProperties /
+│                 MigrationAutoConfiguration / RegionClientAutoConfiguration /
+│                 MigrationInfrastructureConfiguration）
+├── shell/        Spring Shell 命令（MigrationCommands / ShellApplication / TaskRegistry）
+├── domain/       领域模型（RegionName / ClientType / Direction / RunStatus / TenantStatus）
+│   └── entity/   实体（MigrationRun / MigrationTenantState）
+└── example/      参考实现（UserMigrationTask / UserCutoverAction）
 ```
 
 ---

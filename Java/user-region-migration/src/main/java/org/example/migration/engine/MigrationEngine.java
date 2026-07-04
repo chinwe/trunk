@@ -16,45 +16,51 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
- * 迁移引擎——框架内核。编排分批、并发、断点、对账、切流。
+ * 迁移引擎——框架内核。编排分批/并发/断点/对账/切流。
  *
- * 通过依赖倒置（CheckpointStore / ReconciliationGate）实现可测性。
- * 支持批次间并发（线程池），单批内串行。
+ * 通过 Builder 模式装配依赖，内部委托给 TenantBatcher（分批并发）、
+ * RetryStrategy（重试）、TokenBucketRateLimiter（限流）。
+ *
+ * 对账与切流通过注入的 ReconciliationGate / CutoverAction / MigrationNotifier 决策。
  */
 public class MigrationEngine {
 
     private static final Logger log = LoggerFactory.getLogger(MigrationEngine.class);
 
+    // 必需依赖
     private final CheckpointStore store;
     private final ReconciliationGate gate;
     private final CutoverAction cutoverAction;
+
+    // 可选依赖（Builder 中全部解为实际值）
     private final RegionClientRegistry registry;
     private final MigrationProperties properties;
     private final MigrationNotifier notifier;
+    private final TokenBucketRateLimiter rateLimiter;
+    private final RetryStrategy retryStrategy;
 
-    /** 旧构造器：兼容无 registry/config 的测试场景 */
-    public MigrationEngine(CheckpointStore store, ReconciliationGate gate, CutoverAction cutoverAction) {
-        this(store, gate, cutoverAction, null, null, MigrationNotifier.NO_OP);
+    // 从 Properties 解出的一次性参数
+    private final int batchSize;
+    private final int threads;
+
+    private MigrationEngine(Builder builder) {
+        this.store = builder.store;
+        this.gate = builder.gate;
+        this.cutoverAction = builder.cutoverAction;
+        this.registry = builder.registry;
+        this.properties = builder.properties;
+        this.notifier = builder.notifier;
+        this.rateLimiter = builder.rateLimiter;
+        this.retryStrategy = builder.retryStrategy;
+        this.batchSize = builder.batchSize;
+        this.threads = builder.threads;
     }
 
-    public MigrationEngine(CheckpointStore store, ReconciliationGate gate, CutoverAction cutoverAction,
-                           RegionClientRegistry registry, MigrationProperties properties, MigrationNotifier notifier) {
-        this.store = store;
-        this.gate = gate;
-        this.cutoverAction = cutoverAction;
-        this.registry = registry;
-        this.properties = properties;
-        this.notifier = notifier;
-    }
+    // ── 公共 API ──
 
     /**
      * 执行完整迁移：创建 run → 分批并发搬运 → 总量闸门 → 切流。
@@ -67,13 +73,11 @@ public class MigrationEngine {
         store.createRun(run, request.getTenantIds());
 
         MigrationContext ctx = buildContext(request.getSourceRegion(), request.getTargetRegion());
-
-        // 分批并发搬运
-        processTenantsConcurrently(task, ctx, runId, request.getTenantIds(),
-                request.getProduct(), request.getBizLine(), request.getThreads());
+        TenantBatcher batcher = new TenantBatcher(batchSize, threads);
+        batcher.processConcurrently(request.getTenantIds(), tenantId ->
+                migrateSingleTenant(task, ctx, runId, tenantId, request.getProduct(), request.getBizLine()));
 
         finalizeAfterMigration(run, ctx, request.getProduct(), request.getBizLine());
-
         return runId;
     }
 
@@ -94,11 +98,11 @@ public class MigrationEngine {
         }
 
         MigrationContext ctx = buildContext(run.getSourceRegion(), run.getTargetRegion());
-        processTenantsConcurrently(task, ctx, runId, pending,
-                run.getProduct(), run.getBizLine(), resolveThreads());
+        TenantBatcher batcher = new TenantBatcher(batchSize, threads);
+        batcher.processConcurrently(pending, tenantId ->
+                migrateSingleTenant(task, ctx, runId, tenantId, run.getProduct(), run.getBizLine()));
 
         finalizeAfterMigration(run, ctx, run.getProduct(), run.getBizLine());
-
         return runId;
     }
 
@@ -120,63 +124,28 @@ public class MigrationEngine {
         }
 
         String rollbackRunId = task.taskName() + "-rollback-" + UUID.randomUUID().toString().substring(0, 8);
-        MigrationRun rollbackRun = new MigrationRun();
-        rollbackRun.setRunId(rollbackRunId);
-        rollbackRun.setTaskName(forwardRun.getTaskName());
-        rollbackRun.setDirection(Direction.ROLLBACK);
-        rollbackRun.setSourceRegion(forwardRun.getTargetRegion());
-        rollbackRun.setTargetRegion(forwardRun.getSourceRegion());
-        rollbackRun.setProduct(forwardRun.getProduct());
-        rollbackRun.setBizLine(forwardRun.getBizLine());
-        rollbackRun.setStatus(RunStatus.RUNNING);
-        rollbackRun.setTotalTenants(tenantsToRollback.size());
-        rollbackRun.setStartedAt(LocalDateTime.now());
-        rollbackRun.setUpdatedAt(LocalDateTime.now());
-        rollbackRun.setParentRunId(forwardRunId);
+        MigrationRun rollbackRun = buildRollbackRun(rollbackRunId, forwardRun, tenantsToRollback.size());
         store.createRun(rollbackRun, tenantsToRollback);
 
         MigrationContext ctx = buildContext(rollbackRun.getSourceRegion(), rollbackRun.getTargetRegion());
-        processTenantsConcurrently(task, ctx, rollbackRunId, tenantsToRollback,
-                rollbackRun.getProduct(), rollbackRun.getBizLine(), resolveThreads());
+        TenantBatcher batcher = new TenantBatcher(batchSize, threads);
+        batcher.processConcurrently(tenantsToRollback, tenantId ->
+                migrateSingleTenant(task, ctx, rollbackRunId, tenantId,
+                        rollbackRun.getProduct(), rollbackRun.getBizLine()));
 
         finalizeAfterMigration(rollbackRun, ctx, rollbackRun.getProduct(), rollbackRun.getBizLine());
-
         return rollbackRunId;
     }
 
-    /**
-     * 分批并发处理租户。批次间用线程池并发，单批内逐租户串行。
-     * 单租户隔离：失败的租户记 FAILED，不影响同批或后续批次。
-     */
-    private void processTenantsConcurrently(TenantMigrationTask task, MigrationContext ctx, String runId,
-                                            List<String> tenantIds, String product, String bizLine, int threads) {
-        int batchSize = resolveBatchSize();
-        List<List<String>> batches = partition(tenantIds, batchSize);
-        int poolSize = Math.max(1, threads);
+    // ── 单租户处理 ──
 
-        ExecutorService executor = Executors.newFixedThreadPool(poolSize);
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        for (List<String> batch : batches) {
-            futures.add(CompletableFuture.runAsync(() -> {
-                for (String tenantId : batch) {
-                    migrateSingleTenant(task, ctx, runId, tenantId, product, bizLine);
-                }
-            }, executor));
-        }
-        try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
-        } catch (Exception e) {
-            throw new RuntimeException("migration batch processing interrupted", e);
-        } finally {
-            shutdownExecutor(executor);
-        }
-    }
-
-    /** 单租户迁移：try-catch 隔离 + 可选重试 */
+    /** 单租户迁移：限流 → 重试 → 状态更新（单租户隔离） */
     private void migrateSingleTenant(TenantMigrationTask task, MigrationContext ctx,
                                      String runId, String tenantId, String product, String bizLine) {
         try {
-            migrateWithRetry(task, ctx, runId, tenantId, product, bizLine);
+            rateLimiter.acquire(1); // 全局限流：阻塞等待令牌
+            retryStrategy.executeWithRetry(tenantId, () ->
+                    task.migrate(ctx, List.of(tenantId), product, bizLine));
             store.updateTenantState(runId, tenantId, TenantStatus.DONE, null);
         } catch (RuntimeException e) {
             log.warn("tenant {} migration failed: {}", tenantId, e.getMessage());
@@ -184,33 +153,7 @@ public class MigrationEngine {
         }
     }
 
-    /** 带 Spring Retry 的单租户迁移（瞬时异常重试） */
-    private void migrateWithRetry(TenantMigrationTask task, MigrationContext ctx,
-                                  String runId, String tenantId, String product, String bizLine) {
-        int maxAttempts = resolveRetryMaxAttempts();
-        RuntimeException lastException = null;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                task.migrate(ctx, List.of(tenantId), product, bizLine);
-                return;
-            } catch (RuntimeException e) {
-                lastException = e;
-                log.debug("tenant {} attempt {} failed: {}", tenantId, attempt, e.getMessage());
-                if (attempt < maxAttempts) {
-                    sleepBackoff(attempt);
-                }
-            }
-        }
-        throw lastException;
-    }
-
-    private void sleepBackoff(int attempt) {
-        try {
-            Thread.sleep(Math.min(1000L * attempt, 5000L));
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-        }
-    }
+    // ── 收尾 ──
 
     /** 搬运后收尾：汇总计数 → 总量闸门 → 切流或停止 */
     private void finalizeAfterMigration(MigrationRun run, MigrationContext ctx,
@@ -232,48 +175,13 @@ public class MigrationEngine {
         }
     }
 
+    // ── 上下文与实体工厂 ──
+
     private MigrationContext buildContext(RegionName source, RegionName target) {
         if (registry != null) {
             return new RegistryMigrationContext(source, target, registry, properties);
         }
-        // 测试回退：无 registry 时返回最小上下文
         return new SimpleMigrationContext(source, target);
-    }
-
-    private int resolveBatchSize() {
-        return properties != null ? properties.getDefaultBatchSize() : 50;
-    }
-
-    private int resolveThreads() {
-        return properties != null ? properties.getDefaultThreads() : 1;
-    }
-
-    private int resolveRetryMaxAttempts() {
-        if (properties != null && properties.getRetry() != null) {
-            return properties.getRetry().getMaxAttempts();
-        }
-        return 1;
-    }
-
-    /** 把租户列表按 batchSize 切分 */
-    static <T> List<List<T>> partition(List<T> list, int batchSize) {
-        List<List<T>> batches = new ArrayList<>();
-        for (int i = 0; i < list.size(); i += batchSize) {
-            batches.add(list.subList(i, Math.min(i + batchSize, list.size())));
-        }
-        return batches;
-    }
-
-    private void shutdownExecutor(ExecutorService executor) {
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(1, TimeUnit.HOURS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
     }
 
     private MigrationRun buildRun(String runId, MigrationRequest request, Direction direction) {
@@ -292,9 +200,132 @@ public class MigrationEngine {
         return run;
     }
 
+    private MigrationRun buildRollbackRun(String runId, MigrationRun forwardRun, int totalTenants) {
+        MigrationRun run = new MigrationRun();
+        run.setRunId(runId);
+        run.setTaskName(forwardRun.getTaskName());
+        run.setDirection(Direction.ROLLBACK);
+        run.setSourceRegion(forwardRun.getTargetRegion());
+        run.setTargetRegion(forwardRun.getSourceRegion());
+        run.setProduct(forwardRun.getProduct());
+        run.setBizLine(forwardRun.getBizLine());
+        run.setStatus(RunStatus.RUNNING);
+        run.setTotalTenants(totalTenants);
+        run.setStartedAt(LocalDateTime.now());
+        run.setUpdatedAt(LocalDateTime.now());
+        run.setParentRunId(forwardRun.getRunId());
+        return run;
+    }
+
     private String generateRunId(TenantMigrationTask task) {
         return task.taskName() + "-run-" + UUID.randomUUID().toString().substring(0, 8);
     }
+
+    // ── Builder ──
+
+    /** 创建 Builder。三个必需依赖直接传入，其余可选。 */
+    public static Builder builder(CheckpointStore store, ReconciliationGate gate, CutoverAction cutoverAction) {
+        return new Builder(store, gate, cutoverAction);
+    }
+
+    public static class Builder {
+        // 必需
+        private final CheckpointStore store;
+        private final ReconciliationGate gate;
+        private final CutoverAction cutoverAction;
+
+        // 可选 → build() 中全部解为非 null
+        private RegionClientRegistry registry;
+        private MigrationProperties properties;
+        private MigrationNotifier notifier = MigrationNotifier.NO_OP;
+        private TokenBucketRateLimiter rateLimiter;
+        private RetryStrategy retryStrategy;
+
+        // 从 Properties 解出的参数（build() 中设置）
+        private int batchSize;
+        private int threads;
+
+        private Builder(CheckpointStore store, ReconciliationGate gate, CutoverAction cutoverAction) {
+            this.store = store;
+            this.gate = gate;
+            this.cutoverAction = cutoverAction;
+        }
+
+        public Builder registry(RegionClientRegistry registry) {
+            this.registry = registry;
+            return this;
+        }
+
+        public Builder properties(MigrationProperties properties) {
+            this.properties = properties;
+            return this;
+        }
+
+        public Builder notifier(MigrationNotifier notifier) {
+            this.notifier = notifier;
+            return this;
+        }
+
+        public Builder rateLimiter(TokenBucketRateLimiter rateLimiter) {
+            this.rateLimiter = rateLimiter;
+            return this;
+        }
+
+        public Builder retryStrategy(RetryStrategy retryStrategy) {
+            this.retryStrategy = retryStrategy;
+            return this;
+        }
+
+        /**
+         * 构建 Engine：解析所有默认值，消除引擎内部的 null guard。
+         * 构建后 Builder 可丢弃——Engine 是完整的。
+         */
+        public MigrationEngine build() {
+            resolveDefaults();
+            return new MigrationEngine(this);
+        }
+
+        /** 为未显式设值的可选依赖解析默认值 */
+        private void resolveDefaults() {
+            if (this.properties == null) {
+                this.properties = new MigrationProperties(); // 全部默认值
+            }
+            if (this.rateLimiter == null) {
+                int qps = properties.getRateLimitQps();
+                if (qps <= 0) {
+                    this.rateLimiter = TokenBucketRateLimiter.noop();
+                } else {
+                    this.rateLimiter = new TokenBucketRateLimiter(qps, qps); // 容量 = 速率
+                }
+            }
+            if (this.retryStrategy == null) {
+                if (properties.getRetry() != null) {
+                    this.retryStrategy = new RetryStrategy(
+                            properties.getRetry().getMaxAttempts(),
+                            parseBackoffMillis(properties.getRetry().getBackoffInitial()));
+                } else {
+                    this.retryStrategy = RetryStrategy.noRetry();
+                }
+            }
+            this.batchSize = properties.getDefaultBatchSize();
+            this.threads = properties.getDefaultThreads();
+        }
+
+        /** 把 "1s" / "500ms" 之类的字符串转为毫秒数（宽松容错） */
+        private static long parseBackoffMillis(String backoff) {
+            if (backoff == null) return 1000L;
+            String s = backoff.trim().toLowerCase();
+            try {
+                if (s.endsWith("ms")) return Long.parseLong(s.replace("ms", "").trim());
+                if (s.endsWith("s")) return (long)(Double.parseDouble(s.replace("s", "").trim()) * 1000);
+                return Long.parseLong(s); // 裸数字视为毫秒
+            } catch (NumberFormatException e) {
+                return 1000L;
+            }
+        }
+    }
+
+    // ── MigrationContext 实现 ──
 
     /** 真实上下文：通过 RegionClientRegistry 提供客户端 */
     private record RegistryMigrationContext(RegionName sourceRegion, RegionName targetRegion,
@@ -302,14 +333,10 @@ public class MigrationEngine {
             implements MigrationContext {
 
         @Override
-        public RegionName sourceRegion() {
-            return sourceRegion;
-        }
+        public RegionName sourceRegion() { return sourceRegion; }
 
         @Override
-        public RegionName targetRegion() {
-            return targetRegion;
-        }
+        public RegionName targetRegion() { return targetRegion; }
 
         @Override
         public <C extends RegionClient> C client(RegionName region, ClientType type, Class<C> clazz) {
@@ -322,24 +349,18 @@ public class MigrationEngine {
         }
 
         @Override
-        public MigrationProperties config() {
-            return config;
-        }
+        public MigrationProperties config() { return config; }
     }
 
-    /** 简化上下文：无 registry，仅用于测试 */
+    /** 简化上下文：无 registry（测试/回退用） */
     private record SimpleMigrationContext(RegionName sourceRegion, RegionName targetRegion)
             implements MigrationContext {
 
         @Override
-        public RegionName sourceRegion() {
-            return sourceRegion;
-        }
+        public RegionName sourceRegion() { return sourceRegion; }
 
         @Override
-        public RegionName targetRegion() {
-            return targetRegion;
-        }
+        public RegionName targetRegion() { return targetRegion; }
 
         @Override
         public <C extends RegionClient> C client(RegionName region, ClientType type, Class<C> clazz) {

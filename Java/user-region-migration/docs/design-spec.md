@@ -61,9 +61,11 @@
 | 7 | 断点粒度 | **租户级** | 崩溃恢复精确 |
 | 8 | 失败隔离 | **单租户隔离** | 失败租户记 FAILED，整批其余继续 |
 | 9 | product/bizLine | **命令行自由参数透传** | 框架不预定义枚举，业务自解读 |
-| 10 | 多数据源 | **sealed RegionClient + 配置驱动自动注册** | 加新 region 只改 yml，零 Java 改动 |
+| 10 | 多数据源 | **配置驱动自动注册 + 多实例** | 加新 region 只改 yml，零 Java 改动；MySQL/Redis 用四参 API 指定实例名，ES/S3/DynamoDB/Kafka 三参 |
 | 11 | 并发 | **批次间并发**（可配线程池），单批内串行 | 吞吐与安全平衡 |
 | 12 | 限流 | **框架内置令牌桶**（按中间件类型分别配 QPS） | 防压垮源/目标 |
+| 21 | 租户来源 | **TenantScanner SPI + 命令行 --tenants** | --tenants 手动指定优先；为空时从源区自动扫描（MySQL 默认实现） |
+| 22 | 对账计数 | **ReconciliationCounter SPI** | 业务实现 COUNT 逻辑；已注册则 CountReconciliationGate 校验通过才切流；未注册则 AlwaysPassReconciliationGate 默认通过 |
 | 13 | 重试 | Spring Retry，max-attempts=3 指数退避，仅瞬时性异常 | 业务数据异常不重试直接 FAILED |
 | 14 | 事务边界 | 业务多中间件写入自管补偿；状态表独立小事务 | 跨中间件无分布式事务 |
 | 15 | 对账 | 可选 verify 钩子 + 独立 verify 命令；**migrate 切流前内置总量闸门** | migrate 不深度自验，但切流前廉价闸门拦截明显丢失 |
@@ -128,8 +130,14 @@ package org.example.migration.spi;
 public interface MigrationContext {
     RegionName sourceRegion();
     RegionName targetRegion();
-    <C extends RegionClient> C client(RegionName region, ClientType type);
-    MigrationConfig config();   // batch-size / threads / rate-limit 等
+
+    /** 单实例中间件（ES/S3/DynamoDB/Kafka）走三参，内部转 instance="default" */
+    <C extends RegionClient> C client(RegionName region, ClientType type, Class<C> clazz);
+
+    /** 多实例中间件（MySQL/Redis）走四参，显式指定实例名（如 "business"、"session"） */
+    <C extends RegionClient> C client(RegionName region, ClientType type, String instance, Class<C> clazz);
+
+    MigrationProperties config();   // batch-size / threads / rate-limit 等
 }
 ```
 
@@ -233,28 +241,31 @@ jasypt:
 ```
 migrate    --task <name> --source <region> --target <region>
            --product <p> --biz-line <b>
-           [--batch-size 50] [--threads 4] [--dry-run] [--resume <run-id>]
+           [--tenants <t1,t2,...>] [--batch-size 50] [--threads 4]
+  # --tenants 手动指定租户ID列表,逗号分隔;不填则调用 TenantScanner 自动扫描源区
   # 流程：① 按租户分批搬运(单租户隔离,租户级断点)
-  #      ② 全量完成跑总量对账闸门(COUNT 级)
+  #      ② 全量完成跑总量对账闸门(COUNT 级,由 ReconciliationCounter SPI 提供)
   #      ③ 对账通过 → CutoverAction.evict(踢登录) → Kafka 迁出/迁入通知
   #      ④ 对账不通过 → 停下不切流,等人工介入
-  # --dry-run 只预估数据量不写
 
-rollback   --run-id <id>
+rollback   --run-id <id> --task <name>
   # 框架读原 run 元数据,创建新 run,direction=ROLLBACK,source/target 对调
   # 复用全部基础设施调用同一个 task.migrate
 
-resume     --run-id <id>
-  # 等价 migrate --resume,从未处理租户继续
+resume     --run-id <id> --task <name>
+  # 从未处理租户(PENDING)继续
 
-verify     --run-id <id> [--sample 0.1] [--full]
-  # 调 task.verify 钩子;--sample 抽样,--full 全量
+verify     --run-id <id> --task <name>
+  # 调 task.verify 钩子
 
-status     [--run-id <id>] [--task <name>]
-  # 查询迁移状态;无参列所有 run;有 run-id 显示详情含失败租户
+status     --run-id <id>
+  # 查询单次执行的详细状态
 
 tasks
   # 列出已注册的 MigrationTask 业务插件
+
+dry-run    --source <region> --target <region> [--tenants <t1,t2,...>]
+  # 预估待迁移租户数（不写数据），--tenants 不填则自动扫描源区
 ```
 
 ---
@@ -323,38 +334,62 @@ org.example.migration
 │   ├── MigrationContext.java
 │   └── result/ (MigrationResult, VerifyResult)
 ├── client/                 # 多中间件客户端抽象
-│   ├── RegionClient.java (sealed)
+│   ├── RegionClient.java
 │   ├── MySqlClient.java, RedisClient.java, EsClient.java
 │   ├── S3Client.java, DynamoDbClient.java, KafkaClient.java
+│   ├── JdbcMySqlClient.java, SpringRedisClient.java, ElasticEsClient.java
+│   ├── AwsS3Client.java, AwsDynamoDbClient.java, SpringKafkaClient.java
 │   └── RegionClientRegistry.java
 ├── engine/                 # 框架内核
-│   ├── MigrationEngine.java        # 编排：分批/并发/断点/对账/切流
-│   ├── TenantBatcher.java          # 租户分批
-│   ├── CheckpointStore.java        # 状态表读写
-│   ├── RateLimiter.java            # 令牌桶
-│   └── CutoverCoordinator.java     # 切流协调(闸门+CutoverAction+Kafka)
+│   ├── MigrationEngine.java            # 编排：分批/并发/断点/对账/切流
+│   ├── CheckpointStore.java            # 状态表读写（抽象）
+│   ├── JdbcCheckpointStore.java        # JDBC 实现（MySQL/H2）
+│   ├── InMemoryCheckpointStore.java    # 内存实现（测试用）
+│   ├── ReconciliationGate.java         # 总量对账闸门（抽象）
+│   ├── AlwaysPassReconciliationGate.java  # 默认通过（无 Counter 时）
+│   ├── CountReconciliationGate.java    # COUNT 校验（有 Counter 时）
+│   ├── ReconciliationCounter.java      # 对账计数器 SPI（业务实现）
+│   ├── TokenBucketRateLimiter.java     # 令牌桶限流
+│   ├── MigrationNotifier.java          # 迁移通知器（抽象）
+│   ├── KafkaMigrationNotifier.java     # Kafka 通知实现
+│   ├── TenantScanner.java              # 租户扫描器（抽象 + MySQL 实现）
+│   └── MigrationRequest.java           # 迁移请求参数
 ├── config/                 # 配置绑定与自动装配
 │   ├── RegionProperties.java
 │   ├── MigrationProperties.java
-│   └── RegionClientAutoConfiguration.java
+│   ├── MigrationAutoConfiguration.java
+│   ├── RegionClientAutoConfiguration.java
+│   └── MigrationInfrastructureConfiguration.java
 ├── shell/                  # Spring Shell 命令
-│   ├── MigrateCommand.java, RollbackCommand.java
-│   ├── ResumeCommand.java, VerifyCommand.java
-│   ├── StatusCommand.java, TasksCommand.java
-│   └── ShellApplication.java       # @SpringShellApplication 入口
+│   ├── MigrationCommands.java          # 全部 7 个命令（migrate/resume/rollback/verify/status/tasks/dry-run）
+│   ├── ShellApplication.java           # @SpringShellApplication 入口
+│   ├── ShellAutoConfiguration.java     # TaskRegistry 自动收集
+│   └── TaskRegistry.java               # 任务注册表
 ├── domain/                 # 领域模型
-│   ├── RegionName.java, ClientType.java, Direction.java, RunStatus.java
+│   ├── RegionName.java, ClientType.java, Direction.java, RunStatus.java, TenantStatus.java
 │   └── entity/ (MigrationRun, MigrationTenantState)
 └── example/                # 参考实现（简化 UserMigration）
-    ├── UserMigrationTask.java       # 实现 TenantMigrationTask, MySQL 单中间件 mock
-    └── UserCutoverAction.java       # 实现 CutoverAction, mock 踢登录
+    ├── UserMigrationTask.java           # 实现 TenantMigrationTask, MySQL 单中间件 mock
+    └── UserCutoverAction.java           # 实现 CutoverAction, mock 踢登录
 ```
 
 **额外交付**：
-- `pom.xml`（Spring Boot 3.2.10 + JDK 21 + spring-shell-starter + jasypt + 各中间件 SDK）
+- `pom.xml`（Spring Boot 3.2.12 + JDK 21 + spring-shell-starter + jasypt + 各中间件 SDK + JaCoCo 100% 覆盖率）
 - `application.yml` + `application-dev/test/prod.yml`
 - `src/main/resources/schema.sql`（状态表 DDL）
 - `README.md`（框架使用说明 + 业务插件开发指南）
+
+### 实现与设计差异说明
+
+以下为实施过程中基于工程实际的调整，不影响核心设计意图：
+
+1. **RegionClient 非 sealed**：Spring Boot 的 CGLIB 代理与 sealed interface 不兼容，改为普通 interface
+2. **引擎组件整合**：设计稿的 `TenantBatcher`、`CutoverCoordinator` 未作为独立类——`MigrationEngine` 直接内置分批（`partition()`）、切流收尾（`finalizeAfterMigration()`）。逻辑简单不需独立类，信噪比更高
+3. **Shell 命令合一**：7 个命令合并在 `MigrationCommands.java` 中，而非 6 个独立文件——命令间共享装配逻辑（`buildEngine`/`resolveTenants`），独立文件反而分散
+4. **新增 TenantScanner SPI**：`migrate --tenants` 为空时自动扫描源区租户，提供 MySQL 默认实现
+5. **新增 ReconciliationCounter SPI**：对账计数由业务提供，`CountReconciliationGate` 对比源/目标计数；未提供时 `AlwaysPassReconciliationGate` 默认通过
+6. **新增 MigrationNotifier 抽象**：切流后通知可替换（默认 Kafka），解耦引擎与通知方式
+7. **多实例支持**：MySQL/Redis 通过四参 API（`ctx.client(region, type, instance, clazz)`）支持同一 region 多个命名实例；ES/S3/DynamoDB/Kafka 维持三参
 
 ---
 

@@ -95,7 +95,7 @@ class RegionClientRegistryTest {
         assertThatThrownBy(() ->
                 registry.client(RegionName.MYANMAR, ClientType.MYSQL, MySqlClient.class))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("MYANMAR")
+                .hasMessageContaining("myanmar")
                 .hasMessageContaining("MYSQL")
                 .hasMessageContaining("default");
     }

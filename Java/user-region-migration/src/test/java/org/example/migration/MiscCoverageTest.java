@@ -4,8 +4,13 @@ import org.example.migration.config.MigrationInfrastructureConfiguration;
 import org.example.migration.config.MigrationProperties;
 import org.example.migration.domain.entity.MigrationRun;
 import org.example.migration.engine.AlwaysPassReconciliationGate;
+import org.example.migration.engine.FakeReconciliationGate;
+import org.example.migration.engine.InMemoryCheckpointStore;
+import org.example.migration.engine.MigrationEngine;
 import org.example.migration.engine.MigrationNotifier;
+import org.example.migration.engine.RecordingCutoverAction;
 import org.example.migration.engine.TenantScanner;
+import org.example.migration.engine.TokenBucketRateLimiter;
 import org.example.migration.spi.result.MigrationResult;
 import org.example.migration.spi.result.VerifyResult;
 import org.junit.jupiter.api.DisplayName;
@@ -71,5 +76,92 @@ class MiscCoverageTest {
         props.setDefaultThreads(8);
         assertThat(props.getDefaultBatchSize()).isEqualTo(20);
         assertThat(props.getDefaultThreads()).isEqualTo(8);
+    }
+
+    @Test
+    @DisplayName("MigrationEngine.Builder 用默认值构建(无 registry/props)")
+    void engineBuilderWithDefaults() {
+        InMemoryCheckpointStore store = new InMemoryCheckpointStore();
+        MigrationEngine engine = MigrationEngine.builder(
+                store, new FakeReconciliationGate(true), new RecordingCutoverAction()).build();
+        assertThat(engine).isNotNull();
+    }
+
+    @Test
+    @DisplayName("MigrationEngine.Builder 显式设所有 optional 依赖后构建")
+    void engineBuilderWithAllOptionals() {
+        MigrationProperties props = new MigrationProperties();
+        props.setDefaultBatchSize(100);
+        props.setDefaultThreads(2);
+        props.setRateLimitQps(100);
+        MigrationProperties.RetryConfig retry = new MigrationProperties.RetryConfig();
+        retry.setMaxAttempts(5);
+        retry.setBackoffInitial("2s");
+        props.setRetry(retry);
+
+        MigrationEngine engine = MigrationEngine.builder(
+                new InMemoryCheckpointStore(), new FakeReconciliationGate(true),
+                new RecordingCutoverAction())
+                .properties(props)
+                .notifier(MigrationNotifier.NO_OP)
+                .rateLimiter(TokenBucketRateLimiter.noop())
+                .build();
+        assertThat(engine).isNotNull();
+    }
+
+    @Test
+    @DisplayName("MigrationEngine.Builder registry 链式调用")
+    void engineBuilderWithRegistry() {
+        MigrationEngine engine = MigrationEngine.builder(
+                new InMemoryCheckpointStore(), new FakeReconciliationGate(true),
+                new RecordingCutoverAction())
+                .registry(new org.example.migration.client.RegionClientRegistry())
+                .build();
+        assertThat(engine).isNotNull();
+    }
+
+    @Test
+    @DisplayName("MigrationProperties 限流/重试配置覆盖")
+    void migrationPropertiesRateLimitAndRetry() {
+        MigrationProperties props = new MigrationProperties();
+        props.setRateLimitQps(0); // 0 = 不限流
+
+        MigrationProperties.RetryConfig retry = new MigrationProperties.RetryConfig();
+        retry.setMaxAttempts(3);
+        retry.setBackoffInitial("500ms");
+        props.setRetry(retry);
+
+        MigrationProperties.RateLimitConfig rl = new MigrationProperties.RateLimitConfig();
+        rl.setQps(100);
+        props.setRateLimit(java.util.Map.of("mysql", rl));
+
+        assertThat(props.getRateLimitQps()).isZero();
+        assertThat(props.getRetry().getMaxAttempts()).isEqualTo(3);
+        assertThat(props.getRetry().getBackoffInitial()).isEqualTo("500ms");
+        assertThat(props.getRateLimit()).containsKey("mysql");
+    }
+
+    @Test
+    @DisplayName("MigrationEngine.Builder parseBackoffMillis 解析各种格式(通过 build 触发)")
+    void engineBuilderParseBackoffVariants() {
+        // ms 格式
+        MigrationProperties p1 = new MigrationProperties();
+        MigrationProperties.RetryConfig r1 = new MigrationProperties.RetryConfig();
+        r1.setMaxAttempts(3);
+        r1.setBackoffInitial("100ms");
+        p1.setRetry(r1);
+        assertThat(MigrationEngine.builder(
+                new InMemoryCheckpointStore(), new FakeReconciliationGate(true),
+                new RecordingCutoverAction()).properties(p1).build()).isNotNull();
+
+        // s 格式
+        MigrationProperties p2 = new MigrationProperties();
+        MigrationProperties.RetryConfig r2 = new MigrationProperties.RetryConfig();
+        r2.setMaxAttempts(3);
+        r2.setBackoffInitial("1.5s");
+        p2.setRetry(r2);
+        assertThat(MigrationEngine.builder(
+                new InMemoryCheckpointStore(), new FakeReconciliationGate(true),
+                new RecordingCutoverAction()).properties(p2).build()).isNotNull();
     }
 }
