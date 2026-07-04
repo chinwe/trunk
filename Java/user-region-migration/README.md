@@ -10,7 +10,7 @@
 
 ## 技术栈
 
-- Spring Boot 3.2.10 + JDK 21 + Maven
+- Spring Boot 3.2.12 + JDK 21 + Maven
 - Spring Shell 3.2.8（CLI 命令框架）
 - Jasypt 3.0.5（配置加密）
 - 测试栈：JUnit 5 + AssertJ + Mockito
@@ -36,18 +36,19 @@ java -jar target/user-region-migration-1.0-SNAPSHOT.jar --spring.shell.interacti
 ### 命令一览
 
 ```
-migrate    --task <name> --source <region> --target <region>
-           --product <p> --biz-line <b>
+migrate    --task <name> -s <region> --target <region>
+           [--product <p>] [--biz-line <b>]
            [--tenants <t1,t2,...>] [--batch-size 50] [--threads 4]
   正向迁移：扫租户(或手动指定)→搬数据→总量闸门→切流
+  短选项：-t <name> = --task, -s <region> = --source
 
-rollback   --run-id <id> --task <name>
+rollback   --run-id <id> -t <name>
   逆向回滚（方向对调复用 migrate）
 
-resume     --run-id <id> --task <name>
+resume     --run-id <id> -t <name>
   从断点续传（只处理 PENDING 租户）
 
-verify     --run-id <id> --task <name>
+verify     --run-id <id> -t <name>
   对账（调用业务插件 verify 钩子）
 
 status     --run-id <id>
@@ -56,7 +57,7 @@ status     --run-id <id>
 tasks
   列出已注册业务插件
 
-dry-run    --source <region> --target <region> [--tenants <t1,t2,...>]
+dry-run    -s <region> --target <region> [--tenants <t1,t2,...>]
   预估待迁移租户数（不写数据）
 ```
 
@@ -84,8 +85,8 @@ public class UserMigrationTask implements TenantMigrationTask {
                                    String product, String bizLine) {
         // 【关键】必须方向无关：通过 ctx.sourceRegion()/targetRegion() 获取客户端，
         //        禁止硬编码具体 region。这样回滚时框架对调 region，同一份逻辑反向执行。
-        MySqlClient source = ctx.client(ctx.sourceRegion(), ClientType.MYSQL, MySqlClient.class);
-        MySqlClient target = ctx.client(ctx.targetRegion(), ClientType.MYSQL, MySqlClient.class);
+        MySqlClient source = ctx.client(ctx.sourceRegion(), ClientType.MYSQL, "business", MySqlClient.class);
+        MySqlClient target = ctx.client(ctx.targetRegion(), ClientType.MYSQL, "business", MySqlClient.class);
 
         // 从源区读 → 写目标区 → 删源区（真搬迁）
         List<?> users = source.queryByTenants("SELECT * FROM users WHERE tenant_id IN ...", tenantIds);
@@ -205,11 +206,11 @@ public class UserReconciliationCounter implements ReconciliationCounter {
 
 ### 令牌桶限流
 
-框架内置 `TokenBucketRateLimiter`（CAS 实现），各中间件按 `migration.rate-limit.<type>.qps` 配置分别限流，防止压垮源/目标中间件。
+框架内置 `TokenBucketRateLimiter`（CAS 实现），按 `migration.rate-limit-qps` 配置统一限流（默认 500 QPS），每租户处理前需获取令牌。`rate-limit.<type>.qps` 字段已预留用于后续按中间件类型细粒度限流。
 
 ### 通知器（MigrationNotifier）
 
-切流成功后框架通过 `MigrationNotifier` 向源区/目标区发送 Kafka 通知（默认实现 `KafkaMigrationNotifier`）。业务可实现 `MigrationNotifier` 接口并声明为 Spring Bean 覆盖默认行为。
+切流成功后框架通过 `MigrationNotifier` 向源区/目标区发送 Kafka 通知（默认实现 `KafkaMigrationNotifier`，使用固定的 `migrated-out`/`migrated-in` 键）。业务可实现 `MigrationNotifier` 接口并声明为 Spring Bean 覆盖默认行为。
 
 ---
 
@@ -235,14 +236,17 @@ mvn test
 org.example.migration
 ├── spi/          业务插件接口（TenantMigrationTask / CutoverAction / MigrationContext）
 │   └── result/   结果类型（MigrationResult / VerifyResult）
-├── client/       多中间件客户端抽象（RegionClient + 6 子接口 + Registry + 6 实现）
-├── engine/       框架内核（MigrationEngine / CheckpointStore / ReconciliationGate /
-│                 TenantScanner / ReconciliationCounter / TokenBucketRateLimiter /
+├── client/       多中间件客户端抽象（RegionClient + 6 子接口 + Registry +
+│                 6 实现 + ClientFactory SPI）
+├── engine/       框架内核（MigrationEngine / TenantBatcher / RetryStrategy /
+│                 CheckpointStore / ReconciliationGate / TenantScanner /
+│                 ReconciliationCounter / TokenBucketRateLimiter /
 │                 MigrationNotifier / MigrationRequest）
 ├── config/       配置绑定与自动装配（RegionProperties / MigrationProperties /
 │                 MigrationAutoConfiguration / RegionClientAutoConfiguration /
-│                 MigrationInfrastructureConfiguration）
-├── shell/        Spring Shell 命令（MigrationCommands / ShellApplication / TaskRegistry）
+│                 MigrationInfrastructureConfiguration / *ClientFactory ×6）
+├── shell/        Spring Shell 命令（MigrationCommands / ShellApplication /
+│                 ShellAutoConfiguration / TaskRegistry）
 ├── domain/       领域模型（RegionName / ClientType / Direction / RunStatus / TenantStatus）
 │   └── entity/   实体（MigrationRun / MigrationTenantState）
 └── example/      参考实现（UserMigrationTask / UserCutoverAction）
@@ -259,7 +263,8 @@ regions:
   singapore:
     mysql:
       business: { jdbc-url: ENC(...), username: ENC(...), password: ENC(...) }
-    redis: { host: ENC(...), port: 6379, password: ENC(...) }
+    redis:
+      default: { host: ENC(...), port: 6379, password: ENC(...) }
     ...
 ```
 

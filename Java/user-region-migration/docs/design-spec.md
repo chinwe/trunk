@@ -41,7 +41,7 @@
 
 ### 1.4 技术基线（沿用仓库现代约定）
 
-- Spring Boot **3.2.10** + JDK **21** + **Maven**
+- Spring Boot **3.2.12** + JDK **21** + **Maven**
 - `spring-shell-starter`（仓库无先例，新增）
 - `groupId: org.example`，`artifactId: user-region-migration`
 - 参考样例：`Java/JUnit5Example/pom.xml`
@@ -146,18 +146,19 @@ public interface MigrationContext {
 ```java
 package org.example.migration.client;
 
-public sealed interface RegionClient
-        permits MySqlClient, RedisClient, EsClient, S3Client, DynamoDbClient, KafkaClient {
+public interface RegionClient {
     /** 逃生口：拿原生客户端做框架未封装的复杂操作 */
     Object raw();
 }
 
 public interface MySqlClient extends RegionClient {
-    <T> List<T> query(String sql, RowMapper<T> mapper, Object... args);
-    int[] batchUpdate(String sql, List<Object[]> args);
+    List<?> queryByTenants(String sql, List<String> tenantIds);
+    int[] batchUpdate(String sql, List<Object[]> argsList);
+    int deleteByTenants(String sql, List<String> tenantIds);
 }
 // RedisClient / EsClient / S3Client / DynamoDbClient / KafkaClient 同理，各暴露迁移高频操作
 
+// ClientType 枚举位于 org.example.migration.domain 包
 public enum ClientType { MYSQL, REDIS, ES, S3, DYNAMODB, KAFKA }
 ```
 
@@ -175,7 +176,7 @@ CREATE TABLE migration_run (
     target_region     VARCHAR(32) NOT NULL,
     product           VARCHAR(64),
     biz_line          VARCHAR(64),
-    status            VARCHAR(16) NOT NULL,             -- INIT/RUNNING/PAUSED/DONE/FAILED
+    status            VARCHAR(16) NOT NULL,             -- RUNNING/DONE/FAILED
     total_tenants     INT,
     processed_tenants INT DEFAULT 0,
     failed_tenants    INT DEFAULT 0,
@@ -204,11 +205,21 @@ CREATE TABLE migration_tenant_state (
 ## 五、配置结构（application.yml + Jasypt）
 
 ```yaml
+spring:
+  application:
+    name: user-region-migration
+  main:
+    web-application-type: none
+  shell:
+    interactive:
+      enabled: false
+
 regions:
   singapore:
     mysql:
       business: { jdbc-url: ENC(...), username: ENC(...), password: ENC(...) }
-    redis: { host: ENC(...), port: 6379, password: ENC(...) }
+    redis:
+      default: { host: ENC(...), port: 6379, password: ENC(...) }
     elasticsearch: { hosts: ENC(...), credentials: ENC(...) }
     s3: { endpoint: ENC(...), bucket: ENC(...), access-key: ENC(...), secret-key: ENC(...) }
     dynamodb: { endpoint: ENC(...), region: ap-southeast-1, access-key: ENC(...), secret-key: ENC(...) }
@@ -220,16 +231,19 @@ regions:
 migration:
   default-batch-size: 50
   default-threads: 4
+  tenant-timeout-minutes: 30
+  rate-limit-qps: 500                 # 全局默认 QPS（令牌桶统一限流）
   rate-limit:
     mysql: { qps: 1000 }
     s3: { qps: 200 }
-    # 各中间件分别配
+    # 按中间件类型的 QPS 预留字段
   retry:
     max-attempts: 3
     backoff-initial: 1s
 
 jasypt:
-  password: ${JASYPT_MASTER_PASSWORD}   # 主密钥走环境变量
+  encryptor:
+    password: ${JASYPT_MASTER_PASSWORD}   # 主密钥走环境变量
 
 # spring.profiles.active 通过命令行 --spring.profiles.active=prod 切换
 ```
@@ -339,9 +353,12 @@ org.example.migration
 │   ├── S3Client.java, DynamoDbClient.java, KafkaClient.java
 │   ├── JdbcMySqlClient.java, SpringRedisClient.java, ElasticEsClient.java
 │   ├── AwsS3Client.java, AwsDynamoDbClient.java, SpringKafkaClient.java
-│   └── RegionClientRegistry.java
+│   ├── RegionClientRegistry.java
+│   └── ClientFactory.java              # 客户端工厂 SPI
 ├── engine/                 # 框架内核
 │   ├── MigrationEngine.java            # 编排：分批/并发/断点/对账/切流
+│   ├── TenantBatcher.java              # 分批 + 线程池并发调度
+│   ├── RetryStrategy.java              # 重试策略（瞬时性异常重试，编程错误排除）
 │   ├── CheckpointStore.java            # 状态表读写（抽象）
 │   ├── JdbcCheckpointStore.java        # JDBC 实现（MySQL/H2）
 │   ├── InMemoryCheckpointStore.java    # 内存实现（测试用）
@@ -349,7 +366,7 @@ org.example.migration
 │   ├── AlwaysPassReconciliationGate.java  # 默认通过（无 Counter 时）
 │   ├── CountReconciliationGate.java    # COUNT 校验（有 Counter 时）
 │   ├── ReconciliationCounter.java      # 对账计数器 SPI（业务实现）
-│   ├── TokenBucketRateLimiter.java     # 令牌桶限流
+│   ├── TokenBucketRateLimiter.java     # 令牌桶限流（全局统一 QPS）
 │   ├── MigrationNotifier.java          # 迁移通知器（抽象）
 │   ├── KafkaMigrationNotifier.java     # Kafka 通知实现
 │   ├── TenantScanner.java              # 租户扫描器（抽象 + MySQL 实现）
@@ -359,10 +376,11 @@ org.example.migration
 │   ├── MigrationProperties.java
 │   ├── MigrationAutoConfiguration.java
 │   ├── RegionClientAutoConfiguration.java
-│   └── MigrationInfrastructureConfiguration.java
+│   ├── MigrationInfrastructureConfiguration.java
+│   └── *ClientFactory.java ×6          # 6 个中间件客户端工厂（实现 ClientFactory SPI）
 ├── shell/                  # Spring Shell 命令
 │   ├── MigrationCommands.java          # 全部 7 个命令（migrate/resume/rollback/verify/status/tasks/dry-run）
-│   ├── ShellApplication.java           # @SpringShellApplication 入口
+│   ├── ShellApplication.java           # @SpringBootApplication 入口
 │   ├── ShellAutoConfiguration.java     # TaskRegistry 自动收集
 │   └── TaskRegistry.java               # 任务注册表
 ├── domain/                 # 领域模型
@@ -374,7 +392,7 @@ org.example.migration
 ```
 
 **额外交付**：
-- `pom.xml`（Spring Boot 3.2.12 + JDK 21 + spring-shell-starter + jasypt + 各中间件 SDK + JaCoCo 100% 覆盖率）
+- `pom.xml`（Spring Boot 3.2.12 + JDK 21 + spring-shell-starter + jasypt + 各中间件 SDK + JaCoCo 90% 覆盖率）
 - `application.yml` + `application-dev/test/prod.yml`
 - `src/main/resources/schema.sql`（状态表 DDL）
 - `README.md`（框架使用说明 + 业务插件开发指南）
@@ -384,7 +402,7 @@ org.example.migration
 以下为实施过程中基于工程实际的调整，不影响核心设计意图：
 
 1. **RegionClient 非 sealed**：Spring Boot 的 CGLIB 代理与 sealed interface 不兼容，改为普通 interface
-2. **引擎组件整合**：设计稿的 `TenantBatcher`、`CutoverCoordinator` 未作为独立类——`MigrationEngine` 直接内置分批（`partition()`）、切流收尾（`finalizeAfterMigration()`）。逻辑简单不需独立类，信噪比更高
+2. **引擎组件整合**：设计稿的 `CutoverCoordinator` 未作为独立类——`MigrationEngine` 直接内置切流收尾（`finalizeAfterMigration()`）。`TenantBatcher` 作为独立类实现分批并发逻辑（`partition()` / `processConcurrently()`），由 `MigrationEngine` 委托调用。
 3. **Shell 命令合一**：7 个命令合并在 `MigrationCommands.java` 中，而非 6 个独立文件——命令间共享装配逻辑（`buildEngine`/`resolveTenants`），独立文件反而分散
 4. **新增 TenantScanner SPI**：`migrate --tenants` 为空时自动扫描源区租户，提供 MySQL 默认实现
 5. **新增 ReconciliationCounter SPI**：对账计数由业务提供，`CountReconciliationGate` 对比源/目标计数；未提供时 `AlwaysPassReconciliationGate` 默认通过
@@ -408,10 +426,10 @@ org.example.migration
 
 1. **脚手架**：pom.xml + 包结构 + ShellApplication 入口 + application.yml 多 profile
 2. **配置层**：RegionProperties + Jasypt + RegionClientAutoConfiguration
-3. **客户端层**：sealed RegionClient + 六个子接口 + Registry
+3. **客户端层**：RegionClient + 六个子接口 + Registry
 4. **状态层**：状态表 DDL + entity + CheckpointStore
 5. **SPI 层**：TenantMigrationTask + CutoverAction + MigrationContext
-6. **引擎层**：MigrationEngine + TenantBatcher + RateLimiter + CutoverCoordinator
+6. **引擎层**：MigrationEngine + TenantBatcher + RateLimiter + RetryStrategy
 7. **命令层**：六个 Spring Shell 命令
 8. **示例**：简化 UserMigrationTask + UserCutoverAction
 9. **README + 业务插件开发指南**
