@@ -39,13 +39,14 @@ public class JdbcCheckpointStore implements CheckpointStore {
             jdbc.update("""
                     INSERT INTO migration_run
                       (run_id, task_name, direction, source_region, target_region,
-                       product, biz_line, status, total_tenants, processed_tenants, failed_tenants,
+                       product, biz_line, status, phase, total_tenants, processed_tenants, failed_tenants,
                        started_at, updated_at, error_context, parent_run_id)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     run.getRunId(), run.getTaskName(), run.getDirection().name(),
                     run.getSourceRegion().value(), run.getTargetRegion().value(),
                     run.getProduct(), run.getBizLine(), run.getStatus().name(),
+                    run.getPhase() != null ? run.getPhase().name() : null,
                     run.getTotalTenants(), 0, 0,
                     Timestamp.valueOf(now), Timestamp.valueOf(now),
                     run.getErrorContext(), run.getParentRunId());
@@ -66,7 +67,7 @@ public class JdbcCheckpointStore implements CheckpointStore {
     public MigrationRun findRun(String runId) {
         List<MigrationRun> runs = jdbc.query("""
                 SELECT run_id, task_name, direction, source_region, target_region,
-                       product, biz_line, status, total_tenants, processed_tenants, failed_tenants,
+                       product, biz_line, status, phase, total_tenants, processed_tenants, failed_tenants,
                        started_at, updated_at, error_context, parent_run_id
                 FROM migration_run WHERE run_id = ?
                 """,
@@ -126,6 +127,9 @@ public class JdbcCheckpointStore implements CheckpointStore {
         run.setProduct(rs.getString("product"));
         run.setBizLine(rs.getString("biz_line"));
         run.setStatus(RunStatus.valueOf(rs.getString("status")));
+        String phaseStr = rs.getString("phase");
+        run.setPhase(phaseStr != null
+                ? org.example.migration.domain.MigrationPhase.valueOf(phaseStr) : null);
         run.setTotalTenants(rs.getInt("total_tenants"));
         run.setProcessedTenants(rs.getInt("processed_tenants"));
         run.setFailedTenants(rs.getInt("failed_tenants"));

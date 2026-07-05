@@ -1,5 +1,9 @@
 -- 迁移状态表 DDL（MySQL）。
 -- 供 JdbcCheckpointStore 使用。InMemoryCheckpointStore 不依赖此脚本。
+--
+-- 注意：本脚本用 CREATE TABLE IF NOT EXISTS，对已存在的表不会自动加列。
+-- ADR-0005 引入 phase 列后，已有数据的 DB 需手工执行：
+--   ALTER TABLE migration_run ADD COLUMN phase VARCHAR(16) AFTER status;
 
 -- 一次迁移执行
 CREATE TABLE IF NOT EXISTS migration_run (
@@ -10,7 +14,8 @@ CREATE TABLE IF NOT EXISTS migration_run (
     target_region     VARCHAR(32)  NOT NULL,
     product           VARCHAR(64),
     biz_line          VARCHAR(64),
-    status            VARCHAR(16)  NOT NULL,              -- RUNNING/DONE/FAILED
+    status            VARCHAR(24)  NOT NULL,              -- RUNNING_CORE/CORE_CUTOVER_DONE/RUNNING_SECONDARY/DONE/FAILED（ADR-0005）
+    phase             VARCHAR(16),                        -- CORE/SECONDARY；ROLLBACK run 为 NULL
     total_tenants     INT,
     processed_tenants INT DEFAULT 0,
     failed_tenants    INT DEFAULT 0,

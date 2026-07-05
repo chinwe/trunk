@@ -3,6 +3,7 @@ package org.example.migration.engine;
 import org.example.migration.client.RegionClientRegistry;
 import org.example.migration.config.MigrationProperties;
 import org.example.migration.domain.Direction;
+import org.example.migration.domain.MigrationPhase;
 import org.example.migration.domain.RegionName;
 import org.example.migration.domain.RunStatus;
 import org.example.migration.domain.TenantStatus;
@@ -63,7 +64,13 @@ public class MigrationEngine {
     // ── 公共 API ──
 
     /**
-     * 执行完整迁移：创建 run → 分批并发搬运 → 总量闸门 → 切流。
+     * 执行完整迁移（两阶段，ADR-0005）：
+     * <pre>
+     * 全批 CORE → finalizeCorePhase（对账CORE + 零失败 + 切流 + 通知①）
+     *          → 重置租户状态 DONE→PENDING → 转 RUNNING_SECONDARY
+     *          → 全批 SECONDARY → finalizeSecondaryPhase（对账SECONDARY + 零失败 + 通知②）
+     * </pre>
+     * 任何阶段零失败检查不过 / 对账不通过 → Run 标 FAILED，停止后续阶段。
      *
      * @return runId
      */
@@ -78,18 +85,31 @@ public class MigrationEngine {
         int effBatch = request.getBatchSize() > 0 ? request.getBatchSize() : batchSize;
         int effThreads = request.getThreads() > 0 ? request.getThreads() : threads;
         TenantBatcher batcher = new TenantBatcher(effBatch, effThreads, tenantTimeoutMinutes);
-        batcher.processBatchesConcurrently(request.getTenantIds(), batch ->
-                migrateBatch(task, ctx, runId, batch, request.getProduct(), request.getBizLine()));
 
-        finalizeAfterMigration(run, ctx, request.getProduct(), request.getBizLine());
-        return runId;
+        // ── CORE 阶段 ──
+        run.setPhase(MigrationPhase.CORE);
+        batcher.processBatchesConcurrently(request.getTenantIds(), batch ->
+                migrateBatch(task, ctx, runId, batch, request.getProduct(), request.getBizLine(),
+                        MigrationPhase.CORE));
+
+        if (!finalizeCorePhase(run, ctx, request.getProduct(), request.getBizLine(), effBatch, effThreads)) {
+            return runId; // CORE 失败（有 FAILED 租户 / 对账不通过）→ 不进 SECONDARY
+        }
+
+        // ── CORE 通过：推进到 SECONDARY（重置租户状态 + 跑 SECONDARY + 收尾）──
+        return advanceToSecondary(task, run, ctx, batcher);
     }
 
     /**
-     * 从断点续传：读取已有 run，处理 PENDING 与 RUNNING 租户。
+     * 从断点续传：按 Run 当前状态分发（ADR-0005 Q9）。
      *
-     * <p>RUNNING 也被重做——这是孤儿租户恢复（CONTEXT.md）：JVM 在 migrateSingleTenant
-     * 三步翻转中间崩溃会留下 RUNNING 租户，resume 视同 PENDING 重做（依赖业务 migrate 幂等，ADR-0002）。
+     * <ul>
+     *   <li>RUNNING_CORE：重做 CORE 的 PENDING+孤儿 RUNNING 批 → finalizeCorePhase
+     *       （若 CORE 已全 DONE 零失败，会重做对账+evict，幂等兜底）。</li>
+     *   <li>CORE_CUTOVER_DONE：CORE 已切流，重置租户状态 → 转 SECONDARY → 做 SECONDARY 全部 → finalizeSecondaryPhase。</li>
+     *   <li>RUNNING_SECONDARY：重做 SECONDARY 的 PENDING+孤儿 RUNNING 批 → finalizeSecondaryPhase。</li>
+     *   <li>DONE/FAILED：已终态，no-op。</li>
+     * </ul>
      *
      * @return runId（与传入相同）
      */
@@ -99,20 +119,80 @@ public class MigrationEngine {
             throw new IllegalArgumentException("run not found: " + runId);
         }
 
-        // 重做 PENDING + 卡住的 RUNNING（孤儿批恢复）
-        List<String> todo = new java.util.ArrayList<>();
-        todo.addAll(store.findTenantIdsByStatus(runId, TenantStatus.PENDING));
-        todo.addAll(store.findTenantIdsByStatus(runId, TenantStatus.RUNNING));
-        if (todo.isEmpty()) {
+        RunStatus status = run.getStatus();
+        // 已切流的 forward run 不应被重做 CORE；DONE/FAILED 为终态
+        if (status == RunStatus.DONE || status == RunStatus.FAILED) {
+            log.info("resume on terminal run {}: status={}, no-op", runId, status);
             return runId;
         }
 
         MigrationContext ctx = buildContext(run.getSourceRegion(), run.getTargetRegion());
         TenantBatcher batcher = new TenantBatcher(batchSize, threads, tenantTimeoutMinutes);
-        batcher.processBatchesConcurrently(todo, batch ->
-                migrateBatch(task, ctx, runId, batch, run.getProduct(), run.getBizLine()));
 
-        finalizeAfterMigration(run, ctx, run.getProduct(), run.getBizLine());
+        if (status == RunStatus.RUNNING_CORE) {
+            run.setPhase(MigrationPhase.CORE);
+            // 重做 CORE 的 PENDING+孤儿 RUNNING 批
+            List<String> todo = collectTodo(runId);
+            if (!todo.isEmpty()) {
+                batcher.processBatchesConcurrently(todo, batch ->
+                        migrateBatch(task, ctx, runId, batch, run.getProduct(), run.getBizLine(),
+                                MigrationPhase.CORE));
+            }
+            // CORE 收尾（含幂等重做对账+evict 的崩溃恢复兜底）
+            if (!finalizeCorePhase(run, ctx, run.getProduct(), run.getBizLine(), batchSize, threads)) {
+                return runId; // CORE 失败，不进 SECONDARY
+            }
+            // CORE 通过：继续推进到 SECONDARY（resume 应把 run 跑到终态，而非停在中间态）
+            return advanceToSecondary(task, run, ctx, batcher);
+        }
+
+        if (status == RunStatus.CORE_CUTOVER_DONE) {
+            // CORE 已切流：直接推进到 SECONDARY
+            return advanceToSecondary(task, run, ctx, batcher);
+        }
+
+        if (status == RunStatus.RUNNING_SECONDARY) {
+            run.setPhase(MigrationPhase.SECONDARY);
+            List<String> todo = collectTodo(runId);
+            if (!todo.isEmpty()) {
+                batcher.processBatchesConcurrently(todo, batch ->
+                        migrateBatch(task, ctx, runId, batch, run.getProduct(), run.getBizLine(),
+                                MigrationPhase.SECONDARY));
+            }
+            finalizeSecondaryPhase(run, ctx, run.getProduct(), run.getBizLine());
+            return runId;
+        }
+
+        // 理论上不可达（status 是枚举的全部非终态值都已处理）
+        throw new IllegalStateException("unexpected run status for resume: " + status);
+    }
+
+    /**
+     * 从 CORE_CUTOVER_DONE 推进到 SECONDARY：重置租户状态 DONE→PENDING → 转 RUNNING_SECONDARY
+     * → 跑 SECONDARY 全部批 → finalizeSecondaryPhase。migrate 命令和 resume 在 CORE 通过后共用此推进。
+     */
+    private String advanceToSecondary(TenantMigrationTask task, MigrationRun run, MigrationContext ctx,
+                                      TenantBatcher batcher) {
+        String runId = run.getRunId();
+        List<String> allDone = store.findTenantIdsByStatus(runId, TenantStatus.DONE);
+        for (String tenantId : allDone) {
+            store.updateTenantState(runId, tenantId, TenantStatus.PENDING, null);
+        }
+        run.setPhase(MigrationPhase.SECONDARY);
+        store.updateRunProgress(runId, 0, 0, RunStatus.RUNNING_SECONDARY);
+
+        // SECONDARY 跑全部租户（重新从 store 取全部租户 ID —— 等价于 original request 的租户集）
+        List<String> allTenants = new java.util.ArrayList<>();
+        allTenants.addAll(store.findTenantIdsByStatus(runId, TenantStatus.PENDING));
+        allTenants.addAll(store.findTenantIdsByStatus(runId, TenantStatus.RUNNING));
+        allTenants.addAll(store.findTenantIdsByStatus(runId, TenantStatus.DONE));
+        allTenants.addAll(store.findTenantIdsByStatus(runId, TenantStatus.FAILED));
+        if (!allTenants.isEmpty()) {
+            batcher.processBatchesConcurrently(allTenants, batch ->
+                    migrateBatch(task, ctx, runId, batch, run.getProduct(), run.getBizLine(),
+                            MigrationPhase.SECONDARY));
+        }
+        finalizeSecondaryPhase(run, ctx, run.getProduct(), run.getBizLine());
         return runId;
     }
 
@@ -120,12 +200,25 @@ public class MigrationEngine {
      * 回滚：方向无关。读取原正向 run，创建新 ROLLBACK run（source/target 对调），
      * 对原 run 中 DONE 的租户调用同一个 task.migrate。
      *
+     * <p><b>已切流态禁 rollback（ADR-0005 Q6）</b>：forward run 处于 CORE_CUTOVER_DONE /
+     * RUNNING_SECONDARY / DONE 时拒绝执行——切流不可逆，反向切流会二次踢用户 + 丢新数据。
+     * 仅 RUNNING_CORE（未切流）允许 rollback，rollback 不分阶段（接缝 2），不踢登录、不发通知。
+     *
      * @return 回滚 run 的 runId
      */
     public String rollback(TenantMigrationTask task, String forwardRunId) {
         MigrationRun forwardRun = store.findRun(forwardRunId);
         if (forwardRun == null) {
             throw new IllegalArgumentException("forward run not found: " + forwardRunId);
+        }
+
+        RunStatus forwardStatus = forwardRun.getStatus();
+        if (forwardStatus == RunStatus.CORE_CUTOVER_DONE
+                || forwardStatus == RunStatus.RUNNING_SECONDARY
+                || forwardStatus == RunStatus.DONE) {
+            throw new IllegalStateException(
+                    "cannot rollback after cutover, forward run status=" + forwardStatus
+                            + ", use forward-repair instead: " + forwardRunId);
         }
 
         List<String> tenantsToRollback = store.findTenantIdsByStatus(forwardRunId, TenantStatus.DONE);
@@ -139,12 +232,23 @@ public class MigrationEngine {
 
         MigrationContext ctx = buildContext(rollbackRun.getSourceRegion(), rollbackRun.getTargetRegion());
         TenantBatcher batcher = new TenantBatcher(batchSize, threads, tenantTimeoutMinutes);
+        // rollback 只搬 CORE 已 DONE 的数据（接缝 2），phase=null 由 task 自行判断方向无关
+        // 这里给 task 传 CORE 语义：rollback 的对象就是核心数据
         batcher.processBatchesConcurrently(tenantsToRollback, batch ->
                 migrateBatch(task, ctx, rollbackRunId, batch,
-                        rollbackRun.getProduct(), rollbackRun.getBizLine()));
+                        rollbackRun.getProduct(), rollbackRun.getBizLine(), MigrationPhase.CORE));
 
-        finalizeAfterMigration(rollbackRun, ctx, rollbackRun.getProduct(), rollbackRun.getBizLine());
+        // rollback 收尾：只对账（CORE）+ 标 DONE，不切流、不发通知（接缝 2）
+        finalizeRollback(rollbackRun);
         return rollbackRunId;
+    }
+
+    /** 收集 PENDING + 孤儿 RUNNING（崩溃中间态）租户 */
+    private List<String> collectTodo(String runId) {
+        List<String> todo = new java.util.ArrayList<>();
+        todo.addAll(store.findTenantIdsByStatus(runId, TenantStatus.PENDING));
+        todo.addAll(store.findTenantIdsByStatus(runId, TenantStatus.RUNNING));
+        return todo;
     }
 
     // ── 批处理 ──
@@ -157,7 +261,7 @@ public class MigrationEngine {
      */
     private void migrateBatch(TenantMigrationTask task, MigrationContext ctx,
                               String runId, List<String> batchTenantIds,
-                              String product, String bizLine) {
+                              String product, String bizLine, MigrationPhase phase) {
         String firstTenant = batchTenantIds.isEmpty() ? "?" : batchTenantIds.get(0);
         try {
             // 批内所有租户置 RUNNING
@@ -166,14 +270,14 @@ public class MigrationEngine {
             }
             rateLimiter.acquire(1); // 按批限流：每批 acquire 1 个令牌
             retryStrategy.executeWithRetry(firstTenant, () ->
-                    task.migrate(ctx, batchTenantIds, product, bizLine));
+                    task.migrate(ctx, batchTenantIds, product, bizLine, phase));
             // 批内所有租户置 DONE
             for (String tenantId : batchTenantIds) {
                 safeUpdateTenantState(runId, tenantId, TenantStatus.DONE, null);
             }
         } catch (RuntimeException e) {
-            log.warn("batch migration failed ({} tenants, first={}): {}",
-                    batchTenantIds.size(), firstTenant, e.getMessage());
+            log.warn("batch migration failed ({} tenants, first={}, phase={}): {}",
+                    batchTenantIds.size(), firstTenant, phase, e.getMessage());
             // 批级隔离：整批标 FAILED
             for (String tenantId : batchTenantIds) {
                 safeUpdateTenantState(runId, tenantId, TenantStatus.FAILED, e.getMessage());
@@ -195,35 +299,98 @@ public class MigrationEngine {
     // ── 收尾 ──
 
     /**
-     * 搬运后收尾：汇总计数 → 零失败硬规则 → 对账闸门 → 切流或停止。
+     * CORE 阶段收尾：汇总计数 → 零失败硬规则 → 对账(CORE) → 切流 → 通知①。
      *
-     * <p>零失败硬规则（决策 #25）：有 FAILED 租户则不切流、Run 标 FAILED。
-     * 切流是不可逆动作（已发 Kafka、业务侧已清内存），跳过失败租户切流等于赌"该租户不重要"。
+     * <p>顺序严格遵守 ADR-0005 Q4：{@code evict → 写 CORE_CUTOVER_DONE → 通知①}。
+     * 漏踢比重踢危险得多，故先执行副作用（evict），后写状态；崩溃在两者之间由 resume 重做 evict
+     * （依赖 evict 幂等，ADR-0005 Q4）。
+     *
+     * @return true=通过、应进 SECONDARY；false=失败（有 FAILED 租户 / 对账不通过）、不进 SECONDARY
      */
-    private void finalizeAfterMigration(MigrationRun run, MigrationContext ctx,
+    private boolean finalizeCorePhase(MigrationRun run, MigrationContext ctx,
+                                      String product, String bizLine,
+                                      int effBatch, int effThreads) {
+        String runId = run.getRunId();
+
+        List<String> done = store.findTenantIdsByStatus(runId, TenantStatus.DONE);
+        List<String> failed = store.findTenantIdsByStatus(runId, TenantStatus.FAILED);
+        int processed = done.size() + failed.size();
+        store.updateRunProgress(runId, processed, failed.size(), RunStatus.RUNNING_CORE);
+
+        // 零失败硬规则：有 FAILED 则不切流
+        if (!failed.isEmpty()) {
+            log.warn("run {} CORE phase has {} failed tenants, skip cutover; mark run FAILED",
+                    runId, failed.size());
+            store.updateRunProgress(runId, processed, failed.size(), RunStatus.FAILED);
+            return false;
+        }
+
+        if (!gate.check(run, done)) {
+            store.updateRunProgress(runId, processed, failed.size(), RunStatus.FAILED);
+            return false;
+        }
+
+        // 对账通过：先 evict → 后写 CORE_CUTOVER_DONE → 再通知①（ADR-0005 Q4）
+        cutoverAction.evict(ctx, done, product, bizLine);
+        store.updateRunProgress(runId, processed, failed.size(), RunStatus.CORE_CUTOVER_DONE);
+        notifier.notify(run.getSourceRegion(), run.getTargetRegion(),
+                "run=" + runId + ", tenants=" + done.size() + ", phase=CORE_CUTOVER");
+        return true;
+    }
+
+    /**
+     * SECONDARY 阶段收尾：汇总计数 → 零失败硬规则 → 对账(SECONDARY) → 通知② → DONE。
+     *
+     * <p>SECONDARY 不切流（CORE 阶段已切）。SECONDARY 失败（FAILED 租户 / 对账不通过）→ Run 标 FAILED，
+     * 已切流不可 rollback，等人工向前修复（ADR-0005 Q6）。
+     */
+    private void finalizeSecondaryPhase(MigrationRun run, MigrationContext ctx,
                                         String product, String bizLine) {
         String runId = run.getRunId();
 
         List<String> done = store.findTenantIdsByStatus(runId, TenantStatus.DONE);
         List<String> failed = store.findTenantIdsByStatus(runId, TenantStatus.FAILED);
         int processed = done.size() + failed.size();
-        store.updateRunProgress(runId, processed, failed.size(), RunStatus.RUNNING);
+        store.updateRunProgress(runId, processed, failed.size(), RunStatus.RUNNING_SECONDARY);
 
-        // 零失败硬规则：有 FAILED 则不切流
         if (!failed.isEmpty()) {
-            log.warn("run {} has {} failed tenants, skip cutover; mark run FAILED", runId, failed.size());
+            log.warn("run {} SECONDARY phase has {} failed tenants; mark run FAILED (already cutover)",
+                    runId, failed.size());
             store.updateRunProgress(runId, processed, failed.size(), RunStatus.FAILED);
             return;
         }
 
-        if (gate.check(run, done)) {
-            cutoverAction.evict(ctx, done, product, bizLine);
-            notifier.notify(run.getSourceRegion(), run.getTargetRegion(),
-                    "run=" + runId + ", tenants=" + done.size());
-            store.updateRunProgress(runId, processed, failed.size(), RunStatus.DONE);
-        } else {
+        if (!gate.check(run, done)) {
             store.updateRunProgress(runId, processed, failed.size(), RunStatus.FAILED);
+            return;
         }
+
+        // 对账通过：通知② → 写 DONE（不切流）
+        notifier.notify(run.getSourceRegion(), run.getTargetRegion(),
+                "run=" + runId + ", tenants=" + done.size() + ", phase=ALL_DONE");
+        store.updateRunProgress(runId, processed, failed.size(), RunStatus.DONE);
+    }
+
+    /**
+     * rollback 收尾：只对账(CORE) → DONE/FAILED。不切流、不发通知（接缝 2）。
+     */
+    private void finalizeRollback(MigrationRun run) {
+        String runId = run.getRunId();
+        List<String> done = store.findTenantIdsByStatus(runId, TenantStatus.DONE);
+        List<String> failed = store.findTenantIdsByStatus(runId, TenantStatus.FAILED);
+        int processed = done.size() + failed.size();
+        store.updateRunProgress(runId, processed, failed.size(), RunStatus.RUNNING_CORE);
+
+        if (!failed.isEmpty()) {
+            log.warn("rollback run {} has {} failed tenants; mark run FAILED", runId, failed.size());
+            store.updateRunProgress(runId, processed, failed.size(), RunStatus.FAILED);
+            return;
+        }
+        if (!gate.check(run, done)) {
+            store.updateRunProgress(runId, processed, failed.size(), RunStatus.FAILED);
+            return;
+        }
+        store.updateRunProgress(runId, processed, failed.size(), RunStatus.DONE);
     }
 
     // ── 上下文与实体工厂 ──
@@ -246,7 +413,9 @@ public class MigrationEngine {
         run.setTargetRegion(request.getTargetRegion());
         run.setProduct(request.getProduct());
         run.setBizLine(request.getBizLine());
-        run.setStatus(RunStatus.RUNNING);
+        run.setStatus(RunStatus.RUNNING_CORE);
+        // ROLLBACK 不分阶段（接缝 2），phase 仅对 FORWARD 有意义
+        run.setPhase(direction == Direction.FORWARD ? MigrationPhase.CORE : null);
         run.setTotalTenants(request.getTenantIds().size());
         run.setStartedAt(LocalDateTime.now());
         run.setUpdatedAt(LocalDateTime.now());
@@ -262,7 +431,8 @@ public class MigrationEngine {
         run.setTargetRegion(forwardRun.getSourceRegion());
         run.setProduct(forwardRun.getProduct());
         run.setBizLine(forwardRun.getBizLine());
-        run.setStatus(RunStatus.RUNNING);
+        run.setStatus(RunStatus.RUNNING_CORE);
+        run.setPhase(null); // ROLLBACK 不分阶段，phase 为 null
         run.setTotalTenants(totalTenants);
         run.setStartedAt(LocalDateTime.now());
         run.setUpdatedAt(LocalDateTime.now());

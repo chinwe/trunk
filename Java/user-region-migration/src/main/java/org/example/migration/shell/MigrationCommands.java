@@ -28,13 +28,13 @@ import java.util.List;
  * 迁移框架命令集。Spring Shell 入口，薄胶水层——解析参数、装配引擎、调用。
  *
  * 命令清单：
- *   migrate       正向迁移（自动扫描租户或手动指定）
- *   resume        从断点续传（重做 PENDING + 孤儿 RUNNING）
- *   rollback      逆向回滚（方向对调复用 migrate）
+ *   migrate       正向迁移（两阶段，ADR-0005：CORE 切流后继续 SECONDARY）
+ *   resume        从断点续传（按 Run 状态分发 CORE/SECONDARY）
+ *   rollback      逆向回滚（方向对调复用 migrate；已切流态拒绝）
  *   verify        对账（调用业务插件 verify 钩子）
  *   status        查询迁移状态
  *   tasks         列出已注册业务插件
- *   dry-run       预估待迁移租户数（不写数据）
+ *   dry-run       预估待迁移租户数与两阶段编排（不写数据）
  */
 @Command
 @Component
@@ -67,7 +67,7 @@ public class MigrationCommands {
         this.tenantScanner = tenantScanner;
     }
 
-    @Command(command = "migrate", description = "正向迁移：扫租户→搬数据→零失败硬规则→对账闸门→切流")
+    @Command(command = "migrate", description = "正向迁移（两阶段）：CORE→切流→SECONDARY")
     public String migrate(
             @Option(shortNames = 't', longNames = "task", description = "任务名") String taskName,
             @Option(shortNames = 's', longNames = "source", description = "源区域") String source,
@@ -90,7 +90,7 @@ public class MigrationCommands {
         return "Migration completed. runId=" + runId + ", status=" + engineStatus(runId);
     }
 
-    @Command(command = "resume", description = "从断点续传：重做 PENDING + 孤儿 RUNNING 租户")
+    @Command(command = "resume", description = "从断点续传：按 Run 状态分发（CORE/SECONDARY）")
     public String resume(
             @Option(longNames = "run-id") String runId,
             @Option(shortNames = 't', longNames = "task") String taskName
@@ -101,14 +101,20 @@ public class MigrationCommands {
         return "Resume completed. runId=" + runId + ", status=" + engineStatus(runId);
     }
 
-    @Command(command = "rollback", description = "逆向回滚：方向对调复用 migrate")
+    @Command(command = "rollback", description = "逆向回滚：方向对调复用 migrate（已切流态拒绝）")
     public String rollback(
             @Option(longNames = "run-id") String runId,
             @Option(shortNames = 't', longNames = "task") String taskName
     ) {
         var task = taskRegistry.findTask(taskName);
         MigrationEngine engine = buildEngine(taskName);
-        String rollbackRunId = engine.rollback(task, runId);
+        String rollbackRunId;
+        try {
+            rollbackRunId = engine.rollback(task, runId);
+        } catch (IllegalStateException e) {
+            // 已切流态拒绝 rollback（ADR-0005 Q6）——命令层捕获返回友好消息
+            return "Rollback rejected: " + e.getMessage();
+        }
 
         // 提示运维：原 run 的 FAILED 租户不会被框架回滚（业务 migrate 抛异常前可能已部分写入）
         int forwardFailed = store.findTenantIdsByStatus(runId,
@@ -146,9 +152,9 @@ public class MigrationCommands {
         if (run == null) {
             return "run not found: " + runId;
         }
-        return String.format("runId=%s, task=%s, direction=%s, %s→%s, status=%s, processed=%d, failed=%d",
+        return String.format("runId=%s, task=%s, direction=%s, %s→%s, status=%s, phase=%s, processed=%d, failed=%d",
                 run.getRunId(), run.getTaskName(), run.getDirection(),
-                run.getSourceRegion(), run.getTargetRegion(), run.getStatus(),
+                run.getSourceRegion(), run.getTargetRegion(), run.getStatus(), run.getPhase(),
                 run.getProcessedTenants(), run.getFailedTenants());
     }
 
@@ -161,14 +167,19 @@ public class MigrationCommands {
         return "registered tasks: " + names;
     }
 
-    @Command(command = "dry-run", description = "预估待迁移租户数(不写数据)")
+    @Command(command = "dry-run", description = "预估待迁移租户数与两阶段编排(不写数据)")
     public String dryRun(
             @Option(shortNames = 's', longNames = "source") String source,
             @Option(longNames = "target") String target,
             @Option(longNames = "tenants", description = "租户ID列表;不填则扫描源区") String tenants
     ) {
         List<String> tenantIds = resolveTenants(source, target, tenants);
-        return String.format("dry-run: source=%s, target=%s, tenantCount=%d", source, target, tenantIds.size());
+        // 演示两阶段编排（ADR-0005）：CORE → 切流 → SECONDARY。不真跑。
+        return String.format(
+                "dry-run: source=%s, target=%s, tenantCount=%d%n" +
+                "  phase[CORE]: migrate core data → reconcile(CORE) → cutover → notify[phase=CORE_CUTOVER]%n" +
+                "  phase[SECONDARY]: migrate secondary data → reconcile(SECONDARY) → notify[phase=ALL_DONE]",
+                source, target, tenantIds.size());
     }
 
     /** 解析租户：手动指定优先，否则扫描源区 */

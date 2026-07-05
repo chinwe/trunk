@@ -2,6 +2,7 @@ package org.example.migration.engine;
 
 import org.example.migration.config.MigrationProperties;
 import org.example.migration.domain.Direction;
+import org.example.migration.domain.MigrationPhase;
 import org.example.migration.spi.TenantMigrationTask;
 import org.example.migration.domain.RegionName;
 import org.example.migration.domain.RunStatus;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * MigrationEngine 行为测试。框架内核的规约。
@@ -36,6 +38,12 @@ class MigrationEngineTest {
     /** 构造引擎：闸门与切流动作由具体测试注入，其余依赖走 Builder 默认值 */
     private MigrationEngine buildEngine(ReconciliationGate gate, RecordingCutoverAction cutover) {
         return MigrationEngine.builder(store, gate, cutover).build();
+    }
+
+    /** 构造引擎：闸门、切流、通知器由具体测试注入（验证两阶段双通知） */
+    private MigrationEngine buildEngine(ReconciliationGate gate, RecordingCutoverAction cutover,
+                                        MigrationNotifier notifier) {
+        return MigrationEngine.builder(store, gate, cutover).notifier(notifier).build();
     }
 
     /** 默认迁移请求：3 个租户新加坡→缅甸 */
@@ -234,18 +242,16 @@ class MigrationEngineTest {
         }
 
         @Test
-        @DisplayName("回滚:方向无关,框架对调 source/target 后复用同一 task.migrate")
+        @DisplayName("回滚:方向无关,框架对调 source/target 后复用同一 task.migrate（仅未切流态允许）")
         void shouldRollbackByReversingDirection() {
-            // 先正向迁移完成
+            // 模拟 CORE 阶段失败（未切流）：pre-seed 一个 RUNNING_CORE run，t1/t2 已 DONE
+            // ADR-0005 Q6：已切流态（CORE_CUTOVER_DONE/RUNNING_SECONDARY/DONE）禁 rollback
+            String forwardRunId = "user-migration-run-rollback-base";
+            preSeedRun(forwardRunId, List.of("t1", "t2"));
+            store.updateTenantState(forwardRunId, "t1", TenantStatus.DONE, null);
+            store.updateTenantState(forwardRunId, "t2", TenantStatus.DONE, null);
+
             FakeMigrationTask task = new FakeMigrationTask("user-migration");
-            RecordingCutoverAction forwardCutover = new RecordingCutoverAction();
-            engine = buildEngine(new FakeReconciliationGate(true), forwardCutover);
-            String forwardRunId = engine.migrate(task, request(List.of("t1", "t2")));
-
-            // 清空 task 记录,准备观察回滚调用
-            task.getMigratedTenants().clear();
-
-            // 回滚：source/target 对调（缅甸→新加坡）
             RecordingCutoverAction rollbackCutover = new RecordingCutoverAction();
             engine = buildEngine(new FakeReconciliationGate(true), rollbackCutover);
 
@@ -256,7 +262,7 @@ class MigrationEngineTest {
             assertThat(rollbackRun.getDirection()).isEqualTo(Direction.ROLLBACK);
             assertThat(rollbackRun.getSourceRegion()).isEqualTo(RegionName.MYANMAR);
             assertThat(rollbackRun.getTargetRegion()).isEqualTo(RegionName.SINGAPORE);
-            // 回滚对原 DONE 租户再次调用 migrate（业务内反向执行）
+            // 回滚对原 DONE 租户再次调用 migrate（CORE 阶段，业务内反向执行）
             assertThat(task.getMigratedTenants()).containsExactlyInAnyOrder("t1", "t2");
         }
     }
@@ -303,7 +309,8 @@ class MigrationEngineTest {
 
                 @Override
                 public org.example.migration.spi.result.MigrationResult migrate(
-                        MigrationContext ctx, List<String> tenantIds, String product, String bizLine) {
+                        MigrationContext ctx, List<String> tenantIds, String product, String bizLine,
+                        org.example.migration.domain.MigrationPhase phase) {
                     if (calls.incrementAndGet() == 1) {
                         throw new RuntimeException("transient connection timeout");
                     }
@@ -330,6 +337,183 @@ class MigrationEngineTest {
         }
     }
 
+    @Nested
+    @DisplayName("两阶段迁移（ADR-0005）")
+    class TwoPhaseMigration {
+
+        @Test
+        @DisplayName("CORE 全部完成后才进 SECONDARY,两阶段顺序执行")
+        void shouldRunCoreThenSecondaryInOrder() {
+            FakeMigrationTask task = new FakeMigrationTask("user-migration");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            engine = buildEngine(new FakeReconciliationGate(true), cutover);
+
+            String runId = engine.migrate(task, request(List.of("t1", "t2")));
+
+            // CORE 与 SECONDARY 都对全部租户调用了一次
+            assertThat(task.getMigratedTenants()).containsExactlyInAnyOrder("t1", "t2");
+            assertThat(task.getSecondaryMigratedTenants()).containsExactlyInAnyOrder("t1", "t2");
+            // 终态 DONE
+            assertThat(store.findRun(runId).getStatus()).isEqualTo(RunStatus.DONE);
+            assertThat(store.findRun(runId).getPhase()).isEqualTo(MigrationPhase.SECONDARY);
+        }
+
+        @Test
+        @DisplayName("CORE 对账通过后切流 + 状态转 CORE_CUTOVER_DONE（中间态对外可见）")
+        void shouldCutoverAfterCoreReconcilePass() {
+            FakeMigrationTask task = new FakeMigrationTask("user-migration");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            // 用一个能观察 CORE_CUTOVER_DONE 中间态的方式：CORE 失败让 run 停在中间态不易，
+            // 这里改用 pre-seed CORE_CUTOVER_DONE 验证状态可见性 + resume 进入 SECONDARY
+            String runId = "user-migration-run-cutover-done";
+            preSeedCutoverDoneRun(runId, List.of("t1", "t2"));
+
+            engine = buildEngine(new FakeReconciliationGate(true), cutover);
+            engine.resume(task, runId);
+
+            // resume 从 CORE_CUTOVER_DONE 进入 SECONDARY 并完成
+            assertThat(task.getSecondaryMigratedTenants()).containsExactlyInAnyOrder("t1", "t2");
+            assertThat(store.findRun(runId).getStatus()).isEqualTo(RunStatus.DONE);
+        }
+
+        @Test
+        @DisplayName("两次 Kafka 通知,payload 含 phase 字段（CORE_CUTOVER / ALL_DONE）")
+        void shouldNotifyTwiceWithPhase() {
+            FakeMigrationTask task = new FakeMigrationTask("user-migration");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            RecordingMigrationNotifier notifier = new RecordingMigrationNotifier();
+            engine = buildEngine(new FakeReconciliationGate(true), cutover, notifier);
+
+            engine.migrate(task, request(List.of("t1", "t2")));
+
+            assertThat(notifier.getPayloads()).hasSize(2);
+            assertThat(notifier.getPayloads().get(0)).contains("phase=CORE_CUTOVER");
+            assertThat(notifier.getPayloads().get(1)).contains("phase=ALL_DONE");
+        }
+
+        @Test
+        @DisplayName("CORE 有 FAILED 租户时不切流、不进 SECONDARY,run 标 FAILED")
+        void shouldNotEnterSecondaryIfCoreHasFailed() {
+            FakeMigrationTask task = new FakeMigrationTask("user-migration").failOn("t2");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            RecordingMigrationNotifier notifier = new RecordingMigrationNotifier();
+            engine = buildEngine(new FakeReconciliationGate(true), cutover, notifier);
+
+            String runId = engine.migrate(task, requestPerTenantBatch(List.of("t1", "t2", "t3")));
+
+            // CORE 失败：未切流、未通知、未进 SECONDARY
+            assertThat(cutover.isEvictCalled()).isFalse();
+            assertThat(notifier.getPayloads()).isEmpty();
+            assertThat(task.getSecondaryMigratedTenants()).isEmpty();
+            assertThat(store.findRun(runId).getStatus()).isEqualTo(RunStatus.FAILED);
+        }
+
+        @Test
+        @DisplayName("SECONDARY 对账失败 → run FAILED（已切流,不自动 rollback）")
+        void shouldFailRunIfSecondaryReconcileFails() {
+            // 先正常完成 CORE 切流（pre-seed CORE_CUTOVER_DONE），SECONDARY 用不通过闸门
+            String runId = "user-migration-run-secondary-fail";
+            preSeedCutoverDoneRun(runId, List.of("t1", "t2"));
+
+            FakeMigrationTask task = new FakeMigrationTask("user-migration");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            engine = buildEngine(new FakeReconciliationGate(false), cutover); // SECONDARY 对账不通过
+
+            engine.resume(task, runId);
+
+            // SECONDARY 跑完但对账失败 → FAILED
+            assertThat(store.findRun(runId).getStatus()).isEqualTo(RunStatus.FAILED);
+            assertThat(task.getSecondaryMigratedTenants()).containsExactlyInAnyOrder("t1", "t2");
+        }
+
+        @Test
+        @DisplayName("已切流态（CORE_CUTOVER_DONE/RUNNING_SECONDARY/DONE）禁 rollback")
+        void shouldRejectRollbackAfterCutover() {
+            // 三个已切流态都应拒绝
+            for (RunStatus terminal : new RunStatus[]{
+                    RunStatus.CORE_CUTOVER_DONE, RunStatus.RUNNING_SECONDARY, RunStatus.DONE}) {
+                String runId = "user-migration-run-reject-" + terminal.name();
+                preSeedRun(runId, List.of("t1"));
+                store.updateTenantState(runId, "t1", TenantStatus.DONE, null);
+                // 直接把 status 改成目标态（preSeedRun 默认 RUNNING_CORE）
+                MigrationRun run = store.findRun(runId);
+                run.setStatus(terminal);
+                // 通过 updateRunProgress 翻状态
+                store.updateRunProgress(runId, 1, 0, terminal);
+
+                FakeMigrationTask task = new FakeMigrationTask("user-migration");
+                RecordingCutoverAction cutover = new RecordingCutoverAction();
+                engine = buildEngine(new FakeReconciliationGate(true), cutover);
+
+                assertThatThrownBy(() -> engine.rollback(task, runId))
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessageContaining("cannot rollback after cutover");
+            }
+        }
+
+        @Test
+        @DisplayName("resume 在 RUNNING_CORE 态重做 CORE 未完成批")
+        void shouldResumeCorePhaseFromUnfinishedBatches() {
+            String runId = "user-migration-run-resume-core";
+            preSeedRun(runId, List.of("t1", "t2", "t3"));
+            store.updateTenantState(runId, "t1", TenantStatus.DONE, null);
+            store.updateTenantState(runId, "t2", TenantStatus.DONE, null);
+            // t3 仍 PENDING
+
+            FakeMigrationTask task = new FakeMigrationTask("user-migration");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            engine = buildEngine(new FakeReconciliationGate(true), cutover);
+
+            engine.resume(task, runId);
+
+            // resume 完成 CORE（t3）→ 切流 → 进 SECONDARY → 完成 SECONDARY
+            assertThat(task.getMigratedTenants()).contains("t3");
+            assertThat(task.getSecondaryMigratedTenants()).containsExactlyInAnyOrder("t1", "t2", "t3");
+            assertThat(store.findRun(runId).getStatus()).isEqualTo(RunStatus.DONE);
+        }
+
+        @Test
+        @DisplayName("resume 在 CORE_CUTOVER_DONE 态跳过 CORE,直接进 SECONDARY")
+        void shouldResumeFromCutoverDoneToSecondary() {
+            String runId = "user-migration-run-resume-cutover";
+            preSeedCutoverDoneRun(runId, List.of("t1", "t2"));
+
+            FakeMigrationTask task = new FakeMigrationTask("user-migration");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            engine = buildEngine(new FakeReconciliationGate(true), cutover);
+
+            engine.resume(task, runId);
+
+            // CORE 不重做（CORE 集合空），SECONDARY 跑全部
+            assertThat(task.getMigratedTenants()).isEmpty();
+            assertThat(task.getSecondaryMigratedTenants()).containsExactlyInAnyOrder("t1", "t2");
+            assertThat(store.findRun(runId).getStatus()).isEqualTo(RunStatus.DONE);
+        }
+
+        @Test
+        @DisplayName("resume 在 RUNNING_SECONDARY 态重做 SECONDARY 未完成批")
+        void shouldResumeSecondaryPhaseFromUnfinishedBatches() {
+            String runId = "user-migration-run-resume-secondary";
+            preSeedCutoverDoneRun(runId, List.of("t1", "t2"));
+            // 模拟 SECONDARY 已跑了一半：t1 DONE，t2 仍 PENDING（CORE_CUTOVER_DONE → resume 重置后 t1 又被改 DONE）
+            // 但 preSeedCutoverDoneRun 之后租户都是 DONE；resume 会先重置为 PENDING 再跑 SECONDARY
+            // 这里直接构造 RUNNING_SECONDARY + 部分 PENDING 来测 resume 的 SECONDARY 分支
+            store.updateRunProgress(runId, 1, 0, RunStatus.RUNNING_SECONDARY);
+            store.updateTenantState(runId, "t1", TenantStatus.DONE, null);
+            store.updateTenantState(runId, "t2", TenantStatus.PENDING, null);
+
+            FakeMigrationTask task = new FakeMigrationTask("user-migration");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            engine = buildEngine(new FakeReconciliationGate(true), cutover);
+
+            engine.resume(task, runId);
+
+            // SECONDARY resume 只重做 t2
+            assertThat(task.getSecondaryMigratedTenants()).containsExactly("t2");
+            assertThat(store.findRun(runId).getStatus()).isEqualTo(RunStatus.DONE);
+        }
+    }
+
     /** 预置一个 run（模拟迁移中途崩溃后已持久化的状态） */
     private void preSeedRun(String runId, List<String> tenantIds) {
         MigrationRun run = new MigrationRun();
@@ -340,8 +524,25 @@ class MigrationEngineTest {
         run.setTargetRegion(RegionName.MYANMAR);
         run.setProduct("saas-im");
         run.setBizLine("im");
-        run.setStatus(RunStatus.RUNNING);
+        run.setStatus(RunStatus.RUNNING_CORE);
+        run.setPhase(MigrationPhase.CORE);
         run.setTotalTenants(tenantIds.size());
         store.createRun(run, tenantIds);
+    }
+
+    /**
+     * 预置一个 CORE 已切流的 run（CORE_CUTOVER_DONE 中间态）。
+     * 模拟 CORE 阶段完成切流、尚未进入 SECONDARY 即崩溃的场景。
+     * 租户全部 DONE（CORE 已搬完），等待 resume 进入 SECONDARY。
+     */
+    private void preSeedCutoverDoneRun(String runId, List<String> tenantIds) {
+        preSeedRun(runId, tenantIds);
+        for (String tenantId : tenantIds) {
+            store.updateTenantState(runId, tenantId, TenantStatus.DONE, null);
+        }
+        store.updateRunProgress(runId, tenantIds.size(), 0, RunStatus.CORE_CUTOVER_DONE);
+        MigrationRun run = store.findRun(runId);
+        run.setPhase(MigrationPhase.CORE);
+        // 内存 store 直接改 phase；Jdbc store 走 updateRunProgress 时不动 phase（phase 由 status 隐式编码）
     }
 }

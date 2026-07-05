@@ -59,7 +59,7 @@ class JdbcCheckpointStoreContractTest extends CheckpointStoreContractTest {
         run.setDirection(org.example.migration.domain.Direction.FORWARD);
         run.setSourceRegion(org.example.migration.domain.RegionName.SINGAPORE);
         run.setTargetRegion(org.example.migration.domain.RegionName.MYANMAR);
-        run.setStatus(org.example.migration.domain.RunStatus.RUNNING);
+        run.setStatus(org.example.migration.domain.RunStatus.RUNNING_CORE);
         run.setTotalTenants(1);
         return run;
     }

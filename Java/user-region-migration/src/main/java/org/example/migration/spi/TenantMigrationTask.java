@@ -1,5 +1,6 @@
 package org.example.migration.spi;
 
+import org.example.migration.domain.MigrationPhase;
 import org.example.migration.spi.result.MigrationResult;
 import org.example.migration.spi.result.VerifyResult;
 
@@ -13,6 +14,9 @@ import java.util.List;
  *   正向：框架注入 source=源区, target=目标区
  *   回滚：框架注入 source=原目标区, target=原源区（对调）
  *   业务通过 ctx.sourceRegion()/targetRegion() 获取客户端，禁止硬编码 region。
+ *
+ * 两阶段（ADR-0005）：框架对每次 Run 先驱动全批 CORE、切流后再驱动全批 SECONDARY。
+ *   业务按 {@link MigrationPhase} 参数分流，搬不同的表/中间件。
  */
 public interface TenantMigrationTask {
 
@@ -20,7 +24,7 @@ public interface TenantMigrationTask {
     String taskName();
 
     /**
-     * 唯一必须实现的方法 —— 方向无关的数据迁移。
+     * 唯一必须实现的方法 —— 方向无关、按阶段分流的迁移。
      *
      * <p><b>幂等契约（必须遵守，ADR-0002）</b>：本方法必须幂等——同一租户被调用 N 次
      * 与 1 次的结果等价。框架的 resume / retry / rollback 都可能对同一租户重复调用 migrate，
@@ -30,13 +34,21 @@ public interface TenantMigrationTask {
      * <p>框架按租户分批（默认 50/批，可配）后调用此方法，业务自行查询并迁移数据。
      * 单租户内跨中间件的补偿回滚由业务在此方法内自管（框架无法代劳）。
      *
+     * <p><b>SECONDARY 阶段的写冲突契约（ADR-0005）</b>：SECONDARY 阶段在 CORE 切流之后执行，
+     * 此时用户已在目标区登录并可能产生新的次核心数据。业务在 SECONDARY 分支内必须实现 merge 策略
+     * （推荐 UPSERT + {@code updated_at} 时间戳比较，或业务自定义），<b>不得简单覆盖</b>目标区已有数据，
+     * 否则会丢失用户在窗口期内新写入的数据。框架不假设踢登录后源区冻结——后台 job / 异步任务 /
+     * 跨系统同步都可能继续往源区写。CORE 阶段无此约束（CORE 在切流之前，目标区无用户写入）。
+     *
      * @param ctx       迁移上下文（含源/目标 region 客户端）
      * @param tenantIds 本批租户ID列表
      * @param product   产品标识（命令行透传）
      * @param bizLine   业务线标识（命令行透传）
+     * @param phase     迁移阶段（CORE / SECONDARY），业务据此分流数据集与 merge 策略
      * @return 迁移结果
      */
-    MigrationResult migrate(MigrationContext ctx, List<String> tenantIds, String product, String bizLine);
+    MigrationResult migrate(MigrationContext ctx, List<String> tenantIds, String product, String bizLine,
+                            MigrationPhase phase);
 
     /**
      * 可选：深度对账。默认未实现，业务可覆盖做总量/抽样/逐条校验。

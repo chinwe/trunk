@@ -85,32 +85,59 @@ class MigrationCommandsTest {
     @Test
     @DisplayName("resume: 从断点续传 PENDING 租户")
     void resume_shouldContinuePending() {
+        // 模拟 SECONDARY 阶段中断：pre-seed 一个 RUNNING_SECONDARY run，t1 已 DONE，t2 仍 PENDING
+        String runId = "user-migration-run-resume-base";
+        org.example.migration.domain.entity.MigrationRun run = new org.example.migration.domain.entity.MigrationRun();
+        run.setRunId(runId);
+        run.setTaskName("user-migration");
+        run.setDirection(org.example.migration.domain.Direction.FORWARD);
+        run.setSourceRegion(org.example.migration.domain.RegionName.SINGAPORE);
+        run.setTargetRegion(org.example.migration.domain.RegionName.MYANMAR);
+        run.setProduct("p");
+        run.setBizLine("b");
+        run.setStatus(org.example.migration.domain.RunStatus.RUNNING_SECONDARY);
+        run.setPhase(org.example.migration.domain.MigrationPhase.SECONDARY);
+        run.setTotalTenants(2);
+        new JdbcCheckpointStore(dataSource).createRun(run, List.of("t1", "t2"));
+        new JdbcCheckpointStore(dataSource).updateTenantState(runId, "t1", TenantStatus.DONE, null);
+
         FakeMigrationTask task = new FakeMigrationTask("user-migration");
         taskRegistry.register(task);
-        String runId = extractRunId(commands.migrate("user-migration", "singapore", "myanmar",
-                "p", "b", "t1,t2", 50, 1));
-
-        // 手动把 t1 回退为 PENDING 模拟中断
-        new JdbcCheckpointStore(dataSource).updateTenantState(runId, "t1", TenantStatus.PENDING, null);
-        task.getMigratedTenants().clear();
 
         commands.resume(runId, "user-migration");
-        assertThat(task.getMigratedTenants()).contains("t1");
+        // SECONDARY resume 重做未完成的 t2，进入 SECONDARY 集合
+        assertThat(task.getSecondaryMigratedTenants()).contains("t2");
     }
 
     @Test
-    @DisplayName("rollback: 对已完成租户回滚")
+    @DisplayName("rollback: 对未切流 run 的 DONE 租户回滚")
     void rollback_shouldReverseDone() {
+        // 模拟 CORE 阶段失败（未切流）：pre-seed 一个 RUNNING_CORE run，t1/t2 已 DONE
+        // ADR-0005 Q6：已切流态禁 rollback，故测未切流态
+        String runId = "user-migration-run-rollback-base";
+        org.example.migration.domain.entity.MigrationRun run = new org.example.migration.domain.entity.MigrationRun();
+        run.setRunId(runId);
+        run.setTaskName("user-migration");
+        run.setDirection(org.example.migration.domain.Direction.FORWARD);
+        run.setSourceRegion(org.example.migration.domain.RegionName.SINGAPORE);
+        run.setTargetRegion(org.example.migration.domain.RegionName.MYANMAR);
+        run.setProduct("p");
+        run.setBizLine("b");
+        run.setStatus(org.example.migration.domain.RunStatus.RUNNING_CORE);
+        run.setPhase(org.example.migration.domain.MigrationPhase.CORE);
+        run.setTotalTenants(2);
+        JdbcCheckpointStore jdbcStore = new JdbcCheckpointStore(dataSource);
+        jdbcStore.createRun(run, List.of("t1", "t2"));
+        jdbcStore.updateTenantState(runId, "t1", TenantStatus.DONE, null);
+        jdbcStore.updateTenantState(runId, "t2", TenantStatus.DONE, null);
+
         FakeMigrationTask task = new FakeMigrationTask("user-migration");
         taskRegistry.register(task);
-        String runId = extractRunId(commands.migrate("user-migration", "singapore", "myanmar",
-                "p", "b", "t1,t2", 50, 1));
 
-        task.getMigratedTenants().clear();
         String result = commands.rollback(runId, "user-migration");
 
         assertThat(result).contains("Rollback completed");
-        // 回滚对 t1/t2 再次 migrate
+        // 回滚对 t1/t2 再次 migrate（CORE 集合）
         assertThat(task.getMigratedTenants()).containsExactlyInAnyOrder("t1", "t2");
     }
 

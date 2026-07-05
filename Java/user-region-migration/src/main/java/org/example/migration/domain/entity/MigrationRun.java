@@ -2,6 +2,7 @@ package org.example.migration.domain.entity;
 
 import lombok.Data;
 import org.example.migration.domain.Direction;
+import org.example.migration.domain.MigrationPhase;
 import org.example.migration.domain.RegionName;
 import org.example.migration.domain.RunStatus;
 
@@ -21,6 +22,8 @@ public class MigrationRun {
     private String product;
     private String bizLine;
     private RunStatus status;
+    /** 当前迁移阶段（ADR-0005）。ROLLBACK run 不分阶段，为 null。 */
+    private MigrationPhase phase;
     private int totalTenants;
     private int processedTenants;
     private int failedTenants;

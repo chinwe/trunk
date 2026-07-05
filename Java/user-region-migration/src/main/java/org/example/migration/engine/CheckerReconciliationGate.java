@@ -28,9 +28,9 @@ public class CheckerReconciliationGate implements ReconciliationGate {
     public boolean check(MigrationRun run, List<String> migratedTenantIds) {
         int tenantCount = migratedTenantIds != null ? migratedTenantIds.size() : 0;
         try {
-            boolean pass = checker.consistent(run, migratedTenantIds);
-            log.info("reconciliation gate: source={}, target={}, migratedTenants={}, pass={}",
-                    run.getSourceRegion(), run.getTargetRegion(), tenantCount, pass);
+            boolean pass = checker.consistent(run, migratedTenantIds, run.getPhase());
+            log.info("reconciliation gate: source={}, target={}, phase={}, migratedTenants={}, pass={}",
+                    run.getSourceRegion(), run.getTargetRegion(), run.getPhase(), tenantCount, pass);
             return pass;
         } catch (RuntimeException e) {
             // 业务校验抛异常视为不通过，避免业务 bug 导致错误切流

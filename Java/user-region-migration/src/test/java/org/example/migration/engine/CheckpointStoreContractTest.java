@@ -31,7 +31,7 @@ abstract class CheckpointStoreContractTest {
         run.setDirection(Direction.FORWARD);
         run.setSourceRegion(RegionName.SINGAPORE);
         run.setTargetRegion(RegionName.MYANMAR);
-        run.setStatus(RunStatus.RUNNING);
+        run.setStatus(RunStatus.RUNNING_CORE);
         run.setTotalTenants(3);
         return run;
     }
