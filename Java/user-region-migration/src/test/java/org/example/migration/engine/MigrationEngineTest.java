@@ -44,34 +44,62 @@ class MigrationEngineTest {
                 "saas-im", "im", tenantIds, 50, 1);
     }
 
+    /** 单租户批（batch=1）：每个租户独立成批，验证批间隔离 */
+    private MigrationRequest requestPerTenantBatch(List<String> tenantIds) {
+        return new MigrationRequest("user-migration", RegionName.SINGAPORE, RegionName.MYANMAR,
+                "saas-im", "im", tenantIds, 1, 1);
+    }
+
     @Nested
-    @DisplayName("单租户隔离")
-    class TenantIsolation {
+    @DisplayName("批级隔离（ADR-0004）")
+    class BatchIsolation {
 
         @Test
-        @DisplayName("一批中某租户失败,其余租户正常完成,失败租户记 FAILED 带 errorContext")
-        void shouldIsolateFailedTenantAndContinueOthers() {
+        @DisplayName("批间隔离:某批失败不影响其他批(batch=1,每个租户独立成批)")
+        void shouldIsolateFailedBatchFromOthers() {
+            // batch=1: t1/t2/t3 各自独立成批
+            FakeMigrationTask task = new FakeMigrationTask("user-migration").failOn("t2");
+            RecordingCutoverAction cutover = new RecordingCutoverAction();
+            engine = buildEngine(new FakeReconciliationGate(true), cutover);
+
+            String runId = engine.migrate(task, requestPerTenantBatch(List.of("t1", "t2", "t3")));
+
+            // t1/t3 各自的批成功
+            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.DONE))
+                    .containsExactlyInAnyOrder("t1", "t3");
+            // t2 所在批失败
+            List<String> failed = store.findTenantIdsByStatus(runId, TenantStatus.FAILED);
+            assertThat(failed).containsExactly("t2");
+            // 失败批带 errorContext
+            assertThat(store.findTenantStatesByStatus(runId, TenantStatus.FAILED)
+                    .getFirst().getErrorContext()).isNotBlank();
+            // run 计数正确
+            MigrationRun run = store.findRun(runId);
+            assertThat(run.getProcessedTenants()).isEqualTo(3);
+            assertThat(run.getFailedTenants()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("批内全失败:批 migrate 抛异常 → 整批所有租户标 FAILED")
+        void shouldFailEntireBatchWhenMigrateThrows() {
+            // batch=50: t1/t2/t3 同批,其中 t2 触发抛异常 → 整批 FAILED
             FakeMigrationTask task = new FakeMigrationTask("user-migration").failOn("t2");
             RecordingCutoverAction cutover = new RecordingCutoverAction();
             engine = buildEngine(new FakeReconciliationGate(true), cutover);
 
             String runId = engine.migrate(task, request(List.of("t1", "t2", "t3")));
 
-            // 成功租户状态 DONE
-            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.DONE))
-                    .containsExactlyInAnyOrder("t1", "t3");
-            // 失败租户状态 FAILED
-            List<String> failed = store.findTenantIdsByStatus(runId, TenantStatus.FAILED);
-            assertThat(failed).containsExactly("t2");
-
-            // 失败租户带 errorContext
+            // 整批失败:t1/t2/t3 都标 FAILED(批级隔离语义)
+            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.DONE)).isEmpty();
+            assertThat(store.findTenantIdsByStatus(runId, TenantStatus.FAILED))
+                    .containsExactlyInAnyOrder("t1", "t2", "t3");
+            // 失败批带 errorContext
             assertThat(store.findTenantStatesByStatus(runId, TenantStatus.FAILED)
                     .getFirst().getErrorContext()).isNotBlank();
-
-            // run 计数正确
+            // run 计数:3 个都计入 failed
             MigrationRun run = store.findRun(runId);
             assertThat(run.getProcessedTenants()).isEqualTo(3);
-            assertThat(run.getFailedTenants()).isEqualTo(1);
+            assertThat(run.getFailedTenants()).isEqualTo(3);
         }
     }
 
@@ -162,17 +190,17 @@ class MigrationEngineTest {
         @Test
         @DisplayName("C2 零失败硬规则:有 FAILED 租户时不切流且 run 标 FAILED,即便闸门会通过")
         void shouldNotCutoverWhenAnyTenantFailedEvenIfGatePasses() {
-            // t2 失败,但闸门配置为通过（模拟业务自证不严谨的场景）
+            // batch=1:t2 单独成批失败,闸门配置为通过(模拟业务自证不严谨)
             FakeMigrationTask task = new FakeMigrationTask("user-migration").failOn("t2");
             RecordingCutoverAction cutover = new RecordingCutoverAction();
             engine = buildEngine(new FakeReconciliationGate(true), cutover);
 
-            String runId = engine.migrate(task, request(List.of("t1", "t2", "t3")));
+            String runId = engine.migrate(task, requestPerTenantBatch(List.of("t1", "t2", "t3")));
 
             // 关键断言:即使闸门会通过,有 FAILED 也不切流
             assertThat(cutover.isEvictCalled()).isFalse();
             assertThat(store.findRun(runId).getStatus()).isEqualTo(RunStatus.FAILED);
-            // 失败租户记录在案,可被后续 resume 重试(依赖业务幂等,ADR-0002)
+            // 失败批记录在案,可被后续 resume 重试(依赖业务幂等,ADR-0002)
             assertThat(store.findTenantIdsByStatus(runId, TenantStatus.FAILED)).containsExactly("t2");
         }
     }
@@ -241,6 +269,7 @@ class MigrationEngineTest {
         @DisplayName("多线程并发时,所有租户仍被处理且单租户隔离成立")
         void shouldHandleConcurrentBatchesWithIsolation() {
             // 20 个租户,其中 2 个失败,4 线程并发
+            // batch=1:每个租户独立成批,失败只影响单租户批(批间隔离)
             FakeMigrationTask task = new FakeMigrationTask("user-migration");
             task.failOn("t5").failOn("t15");
             RecordingCutoverAction cutover = new RecordingCutoverAction();
@@ -250,7 +279,7 @@ class MigrationEngineTest {
                     .iterate(1, i -> i + 1).limit(20).map(i -> "t" + i).toList();
             String runId = engine.migrate(task, new org.example.migration.engine.MigrationRequest(
                     "user-migration", RegionName.SINGAPORE, RegionName.MYANMAR,
-                    "p", "b", tenants, 5, 4));
+                    "p", "b", tenants, 1, 4));
 
             assertThat(store.findTenantIdsByStatus(runId, TenantStatus.DONE)).hasSize(18);
             assertThat(store.findTenantIdsByStatus(runId, TenantStatus.FAILED))

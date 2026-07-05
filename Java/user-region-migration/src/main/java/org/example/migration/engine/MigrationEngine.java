@@ -78,8 +78,8 @@ public class MigrationEngine {
         int effBatch = request.getBatchSize() > 0 ? request.getBatchSize() : batchSize;
         int effThreads = request.getThreads() > 0 ? request.getThreads() : threads;
         TenantBatcher batcher = new TenantBatcher(effBatch, effThreads, tenantTimeoutMinutes);
-        batcher.processConcurrently(request.getTenantIds(), tenantId ->
-                migrateSingleTenant(task, ctx, runId, tenantId, request.getProduct(), request.getBizLine()));
+        batcher.processBatchesConcurrently(request.getTenantIds(), batch ->
+                migrateBatch(task, ctx, runId, batch, request.getProduct(), request.getBizLine()));
 
         finalizeAfterMigration(run, ctx, request.getProduct(), request.getBizLine());
         return runId;
@@ -99,7 +99,7 @@ public class MigrationEngine {
             throw new IllegalArgumentException("run not found: " + runId);
         }
 
-        // 重做 PENDING + 卡住的 RUNNING（孤儿租户恢复）
+        // 重做 PENDING + 卡住的 RUNNING（孤儿批恢复）
         List<String> todo = new java.util.ArrayList<>();
         todo.addAll(store.findTenantIdsByStatus(runId, TenantStatus.PENDING));
         todo.addAll(store.findTenantIdsByStatus(runId, TenantStatus.RUNNING));
@@ -109,8 +109,8 @@ public class MigrationEngine {
 
         MigrationContext ctx = buildContext(run.getSourceRegion(), run.getTargetRegion());
         TenantBatcher batcher = new TenantBatcher(batchSize, threads, tenantTimeoutMinutes);
-        batcher.processConcurrently(todo, tenantId ->
-                migrateSingleTenant(task, ctx, runId, tenantId, run.getProduct(), run.getBizLine()));
+        batcher.processBatchesConcurrently(todo, batch ->
+                migrateBatch(task, ctx, runId, batch, run.getProduct(), run.getBizLine()));
 
         finalizeAfterMigration(run, ctx, run.getProduct(), run.getBizLine());
         return runId;
@@ -139,33 +139,45 @@ public class MigrationEngine {
 
         MigrationContext ctx = buildContext(rollbackRun.getSourceRegion(), rollbackRun.getTargetRegion());
         TenantBatcher batcher = new TenantBatcher(batchSize, threads, tenantTimeoutMinutes);
-        batcher.processConcurrently(tenantsToRollback, tenantId ->
-                migrateSingleTenant(task, ctx, rollbackRunId, tenantId,
+        batcher.processBatchesConcurrently(tenantsToRollback, batch ->
+                migrateBatch(task, ctx, rollbackRunId, batch,
                         rollbackRun.getProduct(), rollbackRun.getBizLine()));
 
         finalizeAfterMigration(rollbackRun, ctx, rollbackRun.getProduct(), rollbackRun.getBizLine());
         return rollbackRunId;
     }
 
-    // ── 单租户处理 ──
+    // ── 批处理 ──
 
     /**
-     * 单租户迁移：状态 RUNNING → 限流 → 重试 → 状态更新（单租户隔离）。
+     * 单批迁移：批内所有租户置 RUNNING → 按租户数限流 → 重试 → 批内统一 DONE 或 FAILED（批级隔离）。
      *
-     * <p>状态写入本身也可能失败（DB 抖动）。把状态写入包进 try-catch，
-     * 避免单租户的状态异常击穿隔离、炸掉整个批次（R1）。
+     * <p>批是状态原子单元：批 {@code migrate} 抛异常 → 整批所有租户标 FAILED（ADR-0004）。
+     * 状态写入本身也可能失败（DB 抖动），用 safeUpdate 兜底，避免状态异常击穿隔离。
      */
-    private void migrateSingleTenant(TenantMigrationTask task, MigrationContext ctx,
-                                     String runId, String tenantId, String product, String bizLine) {
+    private void migrateBatch(TenantMigrationTask task, MigrationContext ctx,
+                              String runId, List<String> batchTenantIds,
+                              String product, String bizLine) {
+        String firstTenant = batchTenantIds.isEmpty() ? "?" : batchTenantIds.get(0);
         try {
-            store.updateTenantState(runId, tenantId, TenantStatus.RUNNING, null);
-            rateLimiter.acquire(1); // 全局限流：阻塞等待令牌
-            retryStrategy.executeWithRetry(tenantId, () ->
-                    task.migrate(ctx, List.of(tenantId), product, bizLine));
-            safeUpdateTenantState(runId, tenantId, TenantStatus.DONE, null);
+            // 批内所有租户置 RUNNING
+            for (String tenantId : batchTenantIds) {
+                safeUpdateTenantState(runId, tenantId, TenantStatus.RUNNING, null);
+            }
+            rateLimiter.acquire(1); // 按批限流：每批 acquire 1 个令牌
+            retryStrategy.executeWithRetry(firstTenant, () ->
+                    task.migrate(ctx, batchTenantIds, product, bizLine));
+            // 批内所有租户置 DONE
+            for (String tenantId : batchTenantIds) {
+                safeUpdateTenantState(runId, tenantId, TenantStatus.DONE, null);
+            }
         } catch (RuntimeException e) {
-            log.warn("tenant {} migration failed: {}", tenantId, e.getMessage());
-            safeUpdateTenantState(runId, tenantId, TenantStatus.FAILED, e.getMessage());
+            log.warn("batch migration failed ({} tenants, first={}): {}",
+                    batchTenantIds.size(), firstTenant, e.getMessage());
+            // 批级隔离：整批标 FAILED
+            for (String tenantId : batchTenantIds) {
+                safeUpdateTenantState(runId, tenantId, TenantStatus.FAILED, e.getMessage());
+            }
         }
     }
 

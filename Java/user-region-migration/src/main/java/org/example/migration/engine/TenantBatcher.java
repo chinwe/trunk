@@ -14,14 +14,13 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 /**
- * 租户级并发处理器（ADR-0003）。
+ * 批间并发处理器（ADR-0004）。
  *
- * <p>每个租户一个 {@link CompletableFuture}，提交到固定大小（{@code threads}）线程池，
- * pool 自然并发 {@code threads} 个租户。{@code batchSize} 仅作进度汇报粒度，不再驱动并发。
+ * <p>按 {@code batchSize} 切批，每批一个 {@link CompletableFuture} 提交到固定大小（{@code threads}）线程池。
+ * 单批内串行（业务一批一个 migrate 调用）；批间并发（threads 个批并行）。
  *
  * <p>这是 {@link MigrationEngine} 的内部模块（package-private）。
- *
- * <p>单租户超时：每个租户的 processor 可配置最大执行时间，超时抛异常由上层隔离。
+ * 单批超时：每批可配置最大执行时间，超时抛异常由上层隔离。
  */
 class TenantBatcher {
 
@@ -29,74 +28,74 @@ class TenantBatcher {
 
     private final int batchSize;
     private final int threads;
-    private final long tenantTimeoutMinutes;
+    private final long batchTimeoutMinutes;
 
     TenantBatcher(int batchSize, int threads) {
         this(batchSize, threads, 0);
     }
 
     /**
-     * @param batchSize            进度汇报粒度（每完成一批打一次日志）
-     * @param threads              租户级并发线程数
-     * @param tenantTimeoutMinutes 单租户迁移超时（分钟），≤0 表示不设超时
+     * @param batchSize           每批租户数（业务调用粒度）
+     * @param threads             批间并发线程数
+     * @param batchTimeoutMinutes 单批迁移超时（分钟），≤0 表示不设超时
      */
-    TenantBatcher(int batchSize, int threads, long tenantTimeoutMinutes) {
+    TenantBatcher(int batchSize, int threads, long batchTimeoutMinutes) {
         this.batchSize = Math.max(1, batchSize);
         this.threads = Math.max(1, threads);
-        this.tenantTimeoutMinutes = tenantTimeoutMinutes;
+        this.batchTimeoutMinutes = batchTimeoutMinutes;
     }
 
     /**
-     * 租户级并发处理。每租户一个任务提交到线程池。
+     * 批间并发处理。每批一个任务提交到线程池，单批内串行调用 processor。
+     *
+     * <p>processor 接收一批租户（而非单个租户），对应业务一次 {@code task.migrate(ctx, batchTenantIds, ...)} 调用。
      *
      * @param tenantIds 全量租户列表
-     * @param processor 单租户处理器（Consumer）
+     * @param processor 单批处理器（接收一批租户ID）
      */
-    void processConcurrently(List<String> tenantIds, Consumer<String> processor) {
+    void processBatchesConcurrently(List<String> tenantIds, Consumer<List<String>> processor) {
         if (tenantIds.isEmpty()) {
             return;
         }
-
-        // 进度汇报：按 batchSize 切片，记录每批的起止（不影响并发）
-        List<List<String>> progressBatches = partition(tenantIds, batchSize);
-        log.info("tenant batcher: {} tenants, {} progress-batches, {} threads",
-                tenantIds.size(), progressBatches.size(), threads);
+        List<List<String>> batches = partition(tenantIds, batchSize);
+        log.info("tenant batcher: {} tenants, {} batches, {} threads",
+                tenantIds.size(), batches.size(), threads);
 
         ExecutorService executor = Executors.newFixedThreadPool(threads);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
-        for (String tenantId : tenantIds) {
+        for (List<String> batch : batches) {
             futures.add(CompletableFuture.runAsync(
-                    () -> processTenantWithTimeout(tenantId, processor), executor));
+                    () -> processBatchWithTimeout(batch, processor), executor));
         }
         try {
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
         } catch (Exception e) {
-            throw new RuntimeException("migration processing interrupted", e);
+            throw new RuntimeException("migration batch processing interrupted", e);
         } finally {
             shutdownQuietly(executor);
         }
     }
 
-    /** 单租户处理（含超时控制） */
-    private void processTenantWithTimeout(String tenantId, Consumer<String> processor) {
-        if (tenantTimeoutMinutes <= 0) {
-            processor.accept(tenantId);
+    /** 单批处理（含超时控制） */
+    private void processBatchWithTimeout(List<String> batch, Consumer<List<String>> processor) {
+        if (batchTimeoutMinutes <= 0) {
+            processor.accept(batch);
             return;
         }
         try {
-            CompletableFuture.runAsync(() -> processor.accept(tenantId))
-                    .orTimeout(tenantTimeoutMinutes, TimeUnit.MINUTES)
+            CompletableFuture.runAsync(() -> processor.accept(batch))
+                    .orTimeout(batchTimeoutMinutes, TimeUnit.MINUTES)
                     .get();
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof TimeoutException) {
                 throw new RuntimeException(
-                        "tenant " + tenantId + " migration timed out after " + tenantTimeoutMinutes + " min", cause);
+                        "batch migration timed out after " + batchTimeoutMinutes + " min, tenants=" + batch, cause);
             }
             throw new RuntimeException(cause != null ? cause : e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("interrupted during tenant migration", e);
+            throw new RuntimeException("interrupted during batch migration", e);
         }
     }
 
@@ -112,11 +111,11 @@ class TenantBatcher {
         }
     }
 
-    /** 切片（仅用于进度汇报日志） */
+    /** 切批 */
     static <T> List<List<T>> partition(List<T> list, int size) {
         List<List<T>> batches = new ArrayList<>();
         for (int i = 0; i < list.size(); i += size) {
-            batches.add(list.subList(i, Math.min(i + size, list.size())));
+            batches.add(new ArrayList<>(list.subList(i, Math.min(i + size, list.size()))));
         }
         return batches;
     }

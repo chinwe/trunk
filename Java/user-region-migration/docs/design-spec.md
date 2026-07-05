@@ -13,7 +13,7 @@
 - **多数据源通用迁移能力**：MySQL / Redis / ES / S3 / DynamoDB / Kafka 六类中间件的统一客户端抽象
 - **租户维度分片驱动**：框架按租户分批（默认 50/批，可配），业务插件接收租户批后自查询自迁移
 - **可靠性机制**：分批 + 断点续传 + 并发 + 令牌桶限流 + Spring Retry 重试
-- **迁移状态维护**：MySQL 状态表，租户级断点 + 单租户隔离
+- **迁移状态维护**：MySQL 状态表，批级断点 + 批级隔离
 - **回滚**：方向无关迁移原语，回滚 = 源/目标对调的同一流程
 - **切流协调**：migrate 内置总量对账闸门 + CutoverAction SPI（业务实现踢登录）+ Kafka 通知
 
@@ -57,13 +57,13 @@
 | 3 | 回滚模型 | **方向无关迁移原语**：回滚=源/目标对调的同一 migrate | 业务只需实现一个 migrate 方法，消除 migrate/rollback 重复 |
 | 4 | 状态存储 | **MySQL 状态表** | ACID、可查可运维、团队熟 |
 | 5 | 配置策略 | **YAML + Jasypt 加密 + dev/test/prod 多 profile** | 自包含，密文可提交 git |
-| 6 | SPI 风格 | **租户分片驱动式**：框架分租户批，业务自查询 | 跨中间件差异大，统一 extract/load 削足适履 |
-| 7 | 断点粒度 | **租户级** | 崩溃恢复精确 |
-| 8 | 失败隔离 | **单租户隔离** | 失败租户记 FAILED，整批其余继续 |
+| 6 | SPI 风格 | **租户分片驱动式**：框架按 batchSize 切批，业务每批一次 `migrate(ctx, List<tenantId>, ...)` | 跨中间件差异大，统一 extract/load 削足适履；业务可批量查询/批量写入优化吞吐 |
+| 7 | 断点粒度 | **批级** | 批是状态原子单元；崩溃恢复以批为单位（ADR-0004） |
+| 8 | 失败隔离 | **批级**：批 migrate 抛异常 → 整批标 FAILED | 批是补偿单元，框架不假设批内可按租户拆分（ADR-0004） |
 | 9 | product/bizLine | **命令行自由参数透传** | 框架不预定义枚举，业务自解读 |
 | 10 | 多数据源 | **配置驱动自动注册 + 多实例** | 加新 region 只改 yml，零 Java 改动；MySQL/Redis 用四参 API 指定实例名，ES/S3/DynamoDB/Kafka 三参 |
-| 11 | 并发 | **租户级并发**（可配线程池），见 ADR-0003 | 单租户已有 try-catch 隔离，租户级并发天然安全；batch 降为进度汇报粒度 |
-| 12 | 限流 | **框架内置令牌桶**（进程级单一全局 QPS） | 防压垮源/目标；按中间件类型分别配 QPS 的设想已撤销（曾长期未实现，详见实现差异说明） |
+| 11 | 并发 | **批间并发**（threads 个批并行），单批内串行；见 ADR-0004 | 吞吐与安全平衡；批是业务调用与状态原子单元 |
+| 12 | 限流 | **框架内置令牌桶**（进程级单一全局 QPS），**按批 acquire**（每批 1 个令牌，限调度速率） | 防压垮源/目标；批内中间件访问速率由业务自管 |
 | 13 | 重试 | Spring Retry，max-attempts=3 指数退避，仅瞬时性异常（黑名单排除编程错误） | 业务数据异常不重试直接 FAILED |
 | 14 | 事务边界 | 业务多中间件写入自管补偿；状态表 `createRun` 单事务 | 跨中间件无分布式事务 |
 | 15 | 对账 | 可选 verify 钩子 + 独立 verify 命令；**migrate 切流前内置对账闸门** | 业务自证一致性（ADR-0001），框架只接受二值判定 |
@@ -75,7 +75,7 @@
 | 21 | 租户来源 | **TenantScanner SPI + 命令行 --tenants** | --tenants 手动指定优先；为空时从源区自动扫描（MySQL 默认实现） |
 | 22 | 对账计数 | **ReconciliationChecker SPI**（ADR-0001） | 业务自证一致性；已注册则 `CheckerReconciliationGate` 校验通过才切流；未注册则 `AlwaysPassReconciliationGate` 默认通过 |
 | 23 | 幂等 | **业务 migrate 必须幂等**（ADR-0002） | resume/retry/rollback 都会重做同一租户，幂等是可恢复/可逆的数学前提 |
-| 24 | 孤儿恢复 | **resume 视同 PENDING 重做 RUNNING 租户** | 崩溃在 RUNNING 中间态的租户不再成为孤儿；依赖 #23 幂等保证重做安全 |
+| 24 | 孤儿恢复 | **resume 视同 PENDING 重做 RUNNING 批** | 崩溃在 RUNNING 中间态的批不再成为孤儿；依赖 #23 幂等保证重做安全 |
 | 25 | 部分失败切流 | **零失败硬规则**：有 FAILED 则不切流、Run 标 FAILED | 切流不可逆，跳过失败租户切流等于赌"该租户不重要" |
 
 ### 2.1 风险记录（grilling 中明确标记的权衡）
@@ -233,10 +233,10 @@ regions:
     # ...
 
 migration:
-  default-batch-size: 50              # 进度汇报粒度（每完成 N 个租户打一次日志）
-  default-threads: 4                  # 租户级并发度
+  default-batch-size: 50              # 业务调用粒度：每批一次 task.migrate，可批量查询/写入
+  default-threads: 4                  # 批间并发度
   tenant-timeout-minutes: 30
-  rate-limit-qps: 500                 # 进程级单一全局 QPS（令牌桶统一限流）
+  rate-limit-qps: 500                 # 进程级单一全局 QPS（令牌桶按批 acquire）
   retry:
     max-attempts: 3
     backoff-initial: 1s
@@ -257,18 +257,20 @@ migrate    --task <name> --source <region> --target <region>
            --product <p> --biz-line <b>
            [--tenants <t1,t2,...>] [--batch-size 50] [--threads 4]
   # --tenants 手动指定租户ID列表,逗号分隔;不填则调用 TenantScanner 自动扫描源区
-  # 流程：① 租户级并发搬运(单租户隔离,租户级断点)
-  #      ② 零失败硬规则:有 FAILED 租户则不切流,Run 标 FAILED
+  # --batch-size 业务调用粒度:每批一次 task.migrate(ctx, batchTenantIds, ...)
+  # --threads 批间并发度:threads 个批并行,单批内串行
+  # 流程：① 按 batchSize 切批,批间并发搬运(批级隔离,批级断点)
+  #      ② 零失败硬规则:有 FAILED 批则不切流,Run 标 FAILED
   #      ③ 全 DONE → 跑对账闸门(由 ReconciliationChecker SPI 业务自证一致性)
   #      ④ 对账通过 → CutoverAction.evict(踢登录) → Kafka 迁出/迁入通知
   #      ⑤ 对账不通过 → 停下不切流,等人工介入
 
 rollback   --run-id <id> --task <name>
   # 框架读原 run 元数据,创建新 run,direction=ROLLBACK,source/target 对调
-  # 复用全部基础设施调用同一个 task.migrate
+  # 复用全部基础设施调用同一个 task.migrate(批粒度)
 
 resume     --run-id <id> --task <name>
-  # 从未处理租户(PENDING)继续
+  # 重做 PENDING + 卡在 RUNNING 的批(孤儿恢复,ADR-0002 幂等保证安全)
 
 verify     --run-id <id> --task <name>
   # 调 task.verify 钩子
@@ -289,12 +291,12 @@ dry-run    --source <region> --target <region> [--tenants <t1,t2,...>]
 
 | 机制 | 实现方式 | 备注 |
 |------|----------|------|
-| 分批 | batch 仅作进度汇报粒度（默认 50） | 不再驱动并发，见 ADR-0003 |
-| 断点续传 | migration_tenant_state 记租户级断点；resume 重做 PENDING + RUNNING | 崩溃从未处理/孤儿租户恢复 |
-| 并发 | 租户级并发，每租户一任务提交到固定线程池 | threads 个租户真正并行 |
-| 限流 | 进程级单一令牌桶，全局 QPS | 防压垮源/目标；按类型限流设想已撤销 |
+| 分批 | 按 batchSize 切批，每批一次 task.migrate | 业务调用粒度 + 状态原子单元（ADR-0004） |
+| 断点续传 | migration_tenant_state 记批级断点；resume 重做 PENDING + RUNNING 批 | 崩溃从未处理/孤儿批恢复 |
+| 并发 | 批间并发：threads 个批并行，单批内串行 | threads 个批真正并行（ADR-0004） |
+| 限流 | 进程级单一令牌桶，按批 acquire（每批 1 个令牌，限调度速率） | 防压垮源/目标；批内访问速率业务自管 |
 | 重试 | Spring Retry，max 3 次指数退避，黑名单排除编程错误 | 业务数据异常不重试直接 FAILED |
-| 单租户隔离 | 每租户 try-catch，FAILED 记 error_context；状态写入失败不外泄 | 整批其余继续 |
+| 批级隔离 | 每批 try-catch，整批 FAILED 记 error_context；状态写入失败不外泄 | 其余批继续 |
 | 事务边界 | 业务多中间件自管补偿；状态表 createRun 单事务 | 跨中间件无分布式事务 |
 | 切流闸门 | 零失败硬规则 + 业务自证对账（ADR-0001），不通过不切 | 防搬错数据自动切流灾难 |
 | 幂等 | SPI 契约强制 migrate 幂等（ADR-0002） | 可恢复/可逆的数学前提 |
@@ -307,12 +309,13 @@ dry-run    --source <region> --target <region> [--tenants <t1,t2,...>]
 ```
 migrate 命令内部编排:
   ① 创建 migration_run(status=RUNNING) + 初始化 migration_tenant_state(所有租户 PENDING)  -- 单事务
-  ② 租户级并发: 每租户一个任务提交到固定大小(threads)线程池
-       try { 更新 tenant_state=RUNNING; 限流 acquire;
-             task.migrate(ctx, [tenant], product, bizLine);  -- 业务须幂等(ADR-0002)
-             更新 tenant_state.status=DONE; processed++ }
-       catch(e) { tenant_state.status=FAILED + error_context; failed++ }  # 单租户隔离
-       (状态写入本身失败时记日志,不让单租户炸整个 run)
+  ② 按 batchSize 切批,批间并发(threads 个批并行,单批内串行):
+       for batch in batches:
+         try { 批内所有租户置 RUNNING; 限流 acquire(1);  # 按批限流
+               task.migrate(ctx, batchTenantIds, product, bizLine);  -- 业务须幂等(ADR-0002)
+               批内所有租户置 DONE; processed += batchTenantIds.size() }
+         catch(e) { 批内所有租户置 FAILED + error_context; failed += batchTenantIds.size() }  # 批级隔离
+       (状态写入本身失败时记日志,不让单批炸整个 run)
   ③ 全部完成 → 零失败硬规则检查:
        if failed > 0: migration_run.status=FAILED, 不切流, 等人工/resume  # 决策 #25
   ④ 全 DONE → 跑对账闸门(ReconciliationChecker 业务自证一致性, ADR-0001)
@@ -333,11 +336,11 @@ rollback --run-id <id>:
   ① 读取原 run(source=Sg, target=Mm, direction=FORWARD)
   ② 创建新 run(source=Mm, target=Sg, direction=ROLLBACK, parent_run_id=<原 run>)
   ③ 从原 run 的 tenant_state 读取所有 status=DONE 的租户(只有这些需要回滚)
-  ④ 按租户分批,对每批调用同一个 task.migrate(ctx, [tenant], ...)
+  ④ 按 batchSize 切批,对每批调用同一个 task.migrate(ctx, batchTenantIds, ...)
      — 此时 ctx.sourceRegion()=Mm, ctx.targetRegion()=Sg(框架对调注入)
      — 业务 migrate 内部"从 source 读→写 target→删 source"逻辑天然反向执行
-  ⑤ 同样支持断点续传、单租户隔离、状态维护
-  ⑥ 回滚完成后同样跑总量闸门,对得上才发"回滚完成"Kafka 通知
+  ⑤ 同样支持断点续传、批级隔离、状态维护
+  ⑥ 回滚完成后同样跑对账闸门,对得上才发"回滚完成"Kafka 通知
 ```
 
 ---
@@ -360,8 +363,8 @@ org.example.migration
 │   ├── RegionClientRegistry.java
 │   └── ClientFactory.java              # 客户端工厂 SPI
 ├── engine/                 # 框架内核
-│   ├── MigrationEngine.java            # 编排：租户级并发/断点/对账/切流
-│   ├── TenantBatcher.java              # 租户级并发调度（ADR-0003）
+│   ├── MigrationEngine.java            # 编排：批间并发/断点/对账/切流
+│   ├── TenantBatcher.java              # 批间并发调度（ADR-0004）
 │   ├── RegistryMigrationContext.java   # MigrationContext 统一实现
 │   ├── RetryStrategy.java              # 重试策略（瞬时性异常重试，编程错误排除）
 │   ├── CheckpointStore.java            # 状态表读写（抽象）
@@ -422,10 +425,19 @@ org.example.migration
 9. **零失败切流硬规则**（C2）：原实现在有 FAILED 租户时仍走闸门并标 DONE，与 `RunStatus` 注释矛盾。改为有 FAILED 则不切流、Run 标 FAILED。
 10. **孤儿租户恢复**（C3）：原 `migrateSingleTenant` 三步翻转引入 RUNNING 中间态，JVM 在中间崩溃则租户永久卡 RUNNING。改为 `resume` 视同 PENDING 重做 RUNNING 租户。
 11. **幂等契约强制**（C4）：原 SPI 契约未声明幂等要求，示例用非幂等 INSERT。改为 SPI 契约强制 migrate 幂等，示例改 UPSERT。
-12. **并发模型重构**（R2，ADR-0003）：原"批次间并发、单批内串行"导致 threads 形同虚设。改为租户级并发，batch 降为进度汇报粒度。
+12. **并发模型重构**（R2，ADR-0003，**后被 ADR-0004 撤销**）：原"批次间并发、单批内串行"导致 threads 形同虚设。一度改为租户级并发。**第三轮恢复批粒度**（ADR-0004），批间并发、批内串行，batch 升回业务调用粒度。
 13. **撤销按类型限流设想**（D1）：原 `rate-limit.{type}.qps` 配置项从未被读取，误导用户。删除配置项，限流改为进程级单一全局 QPS。
-14. **状态层事务与隔离补齐**（R1/R4）：`createRun` 加单事务；`migrateSingleTenant` 的状态写入失败不外泄为批次异常。
+14. **状态层事务与隔离补齐**（R1/R4）：`createRun` 加单事务；批级状态写入失败不外泄为整 run 异常。
 15. **生产准备补齐**：MySQL 工厂换 HikariCP 连接池（Q5）；删除 Jasypt 默认密钥（Q4）。
+
+### 第三轮修订（2026-07-05，批粒度对齐）
+
+经对齐 SPI 本意（决策 #6 "租户分片驱动"、`migrate(List<tenantIds>)` 签名），发现 ADR-0003 的"租户级并发"基于"业务拿单租户"的错误前提。详见 ADR-0004：
+
+16. **批粒度迁移**：业务一次拿一批（batchSize 可配），可批量查询/批量写入优化吞吐。
+17. **批级失败隔离**：批 migrate 抛异常 → 整批标 FAILED。批是原子单元（业务在批内自管补偿）。
+18. **批间并发**：threads 个批并行，单批内串行（撤销 ADR-0003 的租户级并发）。
+19. **限流按批 acquire**：每批 acquire 1 个令牌（限调度速率），批内访问速率由业务自管。
 
 ---
 
@@ -463,4 +475,4 @@ org.example.migration
 - **为何 migrate 内置对账闸门**：migrate 不自深度验证 + 内部自动切流，两者组合会产生"搬错数据即切流"的灾难。闸门是关键拦截点。**第二轮修订**：闸门算法由业务自证（ADR-0001），框架不预设 count 比对——因真搬迁语义下 count 比对数学上不自洽。
 - **为何租户分片驱动而非 extract/load**：不同业务（用户/设备/Open）查询条件、跨中间件搬运逻辑差异大，统一 extract/load 抽象削足适履；让业务拿租户批自发挥更务实。
 - **为何强制 migrate 幂等**（第二轮新增）：resume/retry/rollback 都会重做同一租户，幂等是可恢复/可逆承诺的数学前提。非幂等 migrate 在第一次 retry/resume 时即可能产生重复数据。
-- **为何租户级并发而非批次并发**（第二轮新增）：单租户已有 try-catch 隔离，租户级并发天然安全；批次内串行导致 threads 形同虚设（详见 ADR-0003）。
+- **为何批粒度迁移而非单租户**（第三轮新增，ADR-0004）：SPI 签名 `migrate(List<tenantIds>)` 与决策 #6 "租户分片驱动"本意都是业务拿一批。批粒度让业务能利用中间件批量 API（批量查询、批量 UPSERT）大幅提升吞吐；ADR-0003 的"租户级并发"基于当时"业务实际拿单租户"的实现现状，方向纠正错误，现撤销。批间并发、批内串行，threads 控制批并行度。

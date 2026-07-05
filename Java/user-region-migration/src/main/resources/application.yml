@@ -15,7 +15,7 @@ spring:
 migration:
   default-batch-size: 50              # 进度汇报粒度（每完成 N 个租户打一次日志）
   default-threads: 4                  # 租户级并发度
-  rate-limit-qps: 500                 # 进程级单一全局 QPS
+  rate-limit-qps: 500                 # 进程级单一全局 QPS（按批 acquire：每秒最多启动 N 个批）
   retry:
     max-attempts: 3
     backoff-initial: 1s

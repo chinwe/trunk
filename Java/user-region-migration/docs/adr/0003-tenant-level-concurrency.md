@@ -2,8 +2,13 @@
 
 ## Status
 
-accepted (2026-07-05)
-supersedes design-spec 决策 #11（批次间并发、单批内串行）
+superseded by ADR-0004 (2026-07-05)
+原 status: accepted (2026-07-05)；曾 supersedes design-spec 决策 #11
+
+> **本 ADR 已被 ADR-0004 撤销**。当时改为租户级并发，是基于"业务每次拿一个租户"的现状。
+> 但 SPI 设计本意（决策 #6 "租户分片驱动"、`migrate(ctx, List<String> tenantIds, ...)` 签名）
+> 是业务拿一批。ADR-0004 回到批粒度后，并发模型也回到"批间并发、批内串行"。
+> 本文件保留以记录决策溯源。
 
 ## Context
 

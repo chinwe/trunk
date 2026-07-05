@@ -8,24 +8,28 @@
 
 **Run**:
 一次迁移执行的完整记录，对应 `migration_run` 表一行。由 `runId` 唯一标识，承载方向、源/目标 region、状态与计数。
-_Avoid_: job, task execution, batch
+_Avoid_: job, task execution
 
 **Direction**:
 Run 的方向。`FORWARD` = 正向迁移（如新加坡→缅甸）；`ROLLBACK` = 逆向回滚（如缅甸→新加坡）。两者复用同一个业务 `migrate` 方法，仅 source/target 对调。
 _Avoid_: mode, flow
 
+**Batch**:
+框架按 `batchSize`（`migration.default-batch-size`，默认 50；命令行 `--batch-size`）切出的租户组，是**业务调用与状态原子单元**。每批一次 `task.migrate(ctx, batchTenantIds, ...)`；批内所有租户统一翻转为 DONE 或 FAILED（ADR-0004）。批间并发由 `threads` 控制。
+_Avoid_: chunk, partition
+
 **Tenant State**:
-单个租户在某次 Run 中的处理状态（`PENDING` / `RUNNING` / `DONE` / `FAILED`），对应 `migration_tenant_state` 表。租户级断点的载体。
+单个租户在某次 Run 中的处理状态（`PENDING` / `RUNNING` / `DONE` / `FAILED`），对应 `migration_tenant_state` 表。状态翻转以批为单位——批内所有租户同时进入同一状态。
 _Avoid_: checkpoint, progress entry
 
-**Orphan Tenant**:
-崩溃后卡在 `RUNNING` 中间态、既非 `PENDING` 也非 `DONE` 的租户。`resume` 命令将其视同 `PENDING` 重做（依赖业务 migrate 幂等）。
-_Avoid_: stuck tenant, zombie
+**Orphan Batch**:
+崩溃后卡在 `RUNNING` 中间态的批（批内租户既非 `PENDING` 也非 `DONE`）。`resume` 命令将其视同 `PENDING` 重做（依赖业务 migrate 幂等）。
+_Avoid_: stuck batch, zombie batch
 
 ### 业务接缝
 
 **Migration Task**:
-业务插件实现的 `TenantMigrationTask` SPI，提供方向无关的 `migrate` 方法。框架按租户分批后驱动。**契约要求 migrate 必须幂等**——同一租户被调用 N 次与 1 次结果等价。
+业务插件实现的 `TenantMigrationTask` SPI，提供方向无关的 `migrate(ctx, List<String> tenantIds, ...)` 方法。框架按 `batchSize` 切批后驱动，业务每批一次调用，可在批内做批量查询/批量写入。**契约要求 migrate 必须幂等**——同一批租户被调用 N 次与 1 次结果等价。
 _Avoid_: job, worker
 
 **Cutover**:
@@ -45,6 +49,6 @@ _Avoid_: verification（保留给 `verify` 命令的深度校验）, audit
 
 - **方向无关**：业务只实现一个 `migrate`，禁止硬编码 region。回滚 = source/target 对调复用同一逻辑。
 - **真搬迁**：业务 `migrate` 默认语义是从源读→写目标→删源（删源区）。回滚时框架对调 region，同一逻辑天然反向。
-- **单租户隔离**：单个租户失败不影响整批其余租户，失败租户记 `FAILED` + errorContext。
-- **幂等是硬约束**：业务 `migrate` 必须幂等。这是"可恢复/可逆"承诺的数学前提——resume/retry/rollback 都会重做同一租户。
+- **批是原子单元**：业务一次拿一批（batchSize 个租户）。批 `migrate` 抛异常 → 整批所有租户标 `FAILED`（批级隔离）。批内成功/失败混合的精细化定位由业务在 migrate 内自管（catch 单租户异常、持久化成功者、再决定是否重新抛出）。
+- **幂等是硬约束**：业务 `migrate` 必须幂等。这是"可恢复/可逆"承诺的数学前提——resume/retry/rollback 都会重做同一批。
 - **零失败切流**：Run 中有任意 `FAILED` 租户时不允许切流，Run 标 `FAILED` 等待人工处理或 resume。

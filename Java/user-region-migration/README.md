@@ -165,7 +165,7 @@ public MigrationResult migrate(MigrationContext ctx, List<String> tenantIds, ...
 }
 ```
 
-框架捕获异常 → 标记租户 FAILED + 记录 errorContext → 整批其余租户继续（单租户隔离）。
+框架捕获异常 → 整批所有租户标 FAILED + 记录 errorContext → 其余批继续（批级隔离，ADR-0004）。
 
 ---
 
@@ -224,7 +224,9 @@ public class UserReconciliationChecker implements ReconciliationChecker {
 
 ### 令牌桶限流
 
-框架内置 `TokenBucketRateLimiter`（CAS 实现），按 `migration.rate-limit-qps` 配置**进程级单一全局 QPS**（默认 500 QPS），每租户处理前需获取令牌。多 run 并发时共享同一令牌桶，全局 QPS 真正受控。设为 0 表示不限流。
+框架内置 `TokenBucketRateLimiter`（CAS 实现），按 `migration.rate-limit-qps` 配置**进程级单一全局 QPS**（默认 500，设为 0 不限流），**按批 acquire**——每批 migrate 启动前获取 1 个令牌，限调度速率（每秒最多启动 N 个批）。多 run 并发时共享同一令牌桶，全局调度速率真正受控。
+
+> **批内访问速率由业务自管**：框架无法看见业务在 `migrate` 内对中间件的实际访问次数，故不预设按租户/按访问次数限流。业务可通过控制批大小、批内并发来间接控制对中间件的访问速率。
 
 ### 通知器（MigrationNotifier）
 
@@ -239,7 +241,7 @@ mvn test
 ```
 
 测试覆盖：
-- **引擎核心行为**（TDD）：单租户隔离、租户级断点续传、孤儿租户恢复、零失败硬规则、切流对账闸门、全流程编排、回滚方向无关、租户级并发
+- **引擎核心行为**（TDD）：批级隔离（批间隔离 + 批内全失败）、孤儿批恢复、零失败硬规则、切流对账闸门、全流程编排、回滚方向无关、批间并发
 - **对账闸门**：业务自证一致性的委托与异常容错（业务 checker 抛异常视为不通过）
 - **状态层契约**：CheckpointStore 的 run/租户状态管理（InMemory + Jdbc 共享契约测试）
 - **配置绑定**：RegionProperties 多 region 多中间件结构

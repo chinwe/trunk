@@ -17,8 +17,8 @@ public class MigrationProperties {
     private int defaultThreads = 4;
     /** 单租户迁移超时（分钟），0 表示不设超时 */
     private long tenantTimeoutMinutes = 30;
-    /** 进程级单一令牌桶的全局 QPS。默认 500，设 0 表示不限流。
-     *  按中间件类型分别配 QPS 的设想已撤销（曾长期未实现，误导用户，详见 design-spec 实现差异说明）。 */
+    /** 进程级单一令牌桶的全局 QPS，**按批 acquire**（每批 1 个令牌）。默认 500，设 0 表示不限流。
+     *  语义：每秒最多启动 N 个批（限调度速率，不限批内中间件访问速率——后者由业务自管）。 */
     private int rateLimitQps = 500;
     /** 重试策略 */
     private RetryConfig retry;
