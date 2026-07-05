@@ -7,6 +7,7 @@ import org.example.migration.engine.CheckpointStore;
 import org.example.migration.engine.FakeMigrationTask;
 import org.example.migration.engine.JdbcCheckpointStore;
 import org.example.migration.engine.MigrationNotifier;
+import org.example.migration.engine.MySqlTenantScanner;
 import org.example.migration.engine.RecordingCutoverAction;
 import org.example.migration.engine.ReconciliationChecker;
 import org.example.migration.engine.TenantScanner;
@@ -57,7 +58,7 @@ class MigrationCommandsTest {
         commands = new MigrationCommands(
                 taskRegistry, store, new RegionClientRegistry(), new MigrationProperties(),
                 MigrationNotifier.NO_OP, TokenBucketRateLimiter.noop(), checkerProvider,
-                new TenantScanner.MySqlTenantScanner("tenant"));
+                new MySqlTenantScanner("tenant"));
     }
 
     /** 从 migrate 命令返回串解析 runId */

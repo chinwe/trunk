@@ -33,7 +33,7 @@ class TenantScannerTest {
         when(ctx.sourceRegion()).thenReturn(RegionName.SINGAPORE);
         when(ctx.client(RegionName.SINGAPORE, ClientType.MYSQL, MySqlClient.class)).thenReturn(mysql);
 
-        TenantScanner.MySqlTenantScanner scanner = new TenantScanner.MySqlTenantScanner("tenants");
+        MySqlTenantScanner scanner = new MySqlTenantScanner("tenants");
         List<String> tenantIds = scanner.scanSourceTenants(ctx);
 
         assertThat(tenantIds).containsExactly("t1", "t2", "t3");
@@ -49,7 +49,7 @@ class TenantScannerTest {
         when(ctx.sourceRegion()).thenReturn(RegionName.SINGAPORE);
         when(ctx.client(RegionName.SINGAPORE, ClientType.MYSQL, MySqlClient.class)).thenReturn(mysql);
 
-        TenantScanner.MySqlTenantScanner scanner = new TenantScanner.MySqlTenantScanner("tenants");
+        MySqlTenantScanner scanner = new MySqlTenantScanner("tenants");
         List<String> tenantIds = scanner.scanSourceTenants(ctx);
 
         assertThat(tenantIds).isEmpty();

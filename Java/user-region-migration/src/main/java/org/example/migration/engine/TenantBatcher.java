@@ -6,11 +6,9 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 /**
@@ -47,6 +45,7 @@ class TenantBatcher {
 
     /**
      * 批间并发处理。每批一个任务提交到线程池，单批内串行调用 processor。
+     * 超时直接挂在外层 CompletableFuture 上，不嵌套 runAsync——消除额外的 ForkJoinPool 线程。
      *
      * <p>processor 接收一批租户（而非单个租户），对应业务一次 {@code task.migrate(ctx, batchTenantIds, ...)} 调用。
      *
@@ -64,8 +63,12 @@ class TenantBatcher {
         ExecutorService executor = Executors.newFixedThreadPool(threads);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (List<String> batch : batches) {
-            futures.add(CompletableFuture.runAsync(
-                    () -> processBatchWithTimeout(batch, processor), executor));
+            CompletableFuture<Void> f = CompletableFuture.runAsync(
+                    () -> processor.accept(batch), executor);
+            if (batchTimeoutMinutes > 0) {
+                f = f.orTimeout(batchTimeoutMinutes, TimeUnit.MINUTES);
+            }
+            futures.add(f);
         }
         try {
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
@@ -73,29 +76,6 @@ class TenantBatcher {
             throw new RuntimeException("migration batch processing interrupted", e);
         } finally {
             shutdownQuietly(executor);
-        }
-    }
-
-    /** 单批处理（含超时控制） */
-    private void processBatchWithTimeout(List<String> batch, Consumer<List<String>> processor) {
-        if (batchTimeoutMinutes <= 0) {
-            processor.accept(batch);
-            return;
-        }
-        try {
-            CompletableFuture.runAsync(() -> processor.accept(batch))
-                    .orTimeout(batchTimeoutMinutes, TimeUnit.MINUTES)
-                    .get();
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof TimeoutException) {
-                throw new RuntimeException(
-                        "batch migration timed out after " + batchTimeoutMinutes + " min, tenants=" + batch, cause);
-            }
-            throw new RuntimeException(cause != null ? cause : e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("interrupted during batch migration", e);
         }
     }
 

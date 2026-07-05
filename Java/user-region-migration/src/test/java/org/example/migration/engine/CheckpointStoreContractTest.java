@@ -124,4 +124,30 @@ abstract class CheckpointStoreContractTest {
         assertThat(found.getFailedTenants()).isEqualTo(1);
         assertThat(found.getStatus()).isEqualTo(RunStatus.DONE);
     }
+
+    @Test
+    @DisplayName("resetDoneAndListTenants 将 DONE 重置为 PENDING 并返回全部租户 ID")
+    void shouldResetDoneToPendingAndReturnAllTenantIds() {
+        store().createRun(newRun("run-1"), List.of("t1", "t2", "t3", "t4"));
+        store().updateTenantState("run-1", "t1", TenantStatus.DONE, null);
+        store().updateTenantState("run-1", "t2", TenantStatus.DONE, null);
+        store().updateTenantState("run-1", "t3", TenantStatus.FAILED, "err");
+        // t4 保持 PENDING
+
+        List<String> all = store().resetDoneAndListTenants("run-1");
+
+        // 返回全部租户（含 FAILED）
+        assertThat(all).containsExactlyInAnyOrder("t1", "t2", "t3", "t4");
+
+        // DONE 已重置为 PENDING
+        assertThat(store().findTenantIdsByStatus("run-1", TenantStatus.DONE)).isEmpty();
+
+        // PENDING 列表包含原 DONE (t1, t2) + 原 PENDING (t4) = 3 个
+        assertThat(store().findTenantIdsByStatus("run-1", TenantStatus.PENDING))
+                .containsExactlyInAnyOrder("t1", "t2", "t4");
+
+        // FAILED 不变
+        assertThat(store().findTenantIdsByStatus("run-1", TenantStatus.FAILED))
+                .containsExactly("t3");
+    }
 }

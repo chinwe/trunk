@@ -3,6 +3,7 @@ package org.example.migration.config;
 import org.example.migration.client.RegionClientRegistry;
 import org.example.migration.engine.KafkaMigrationNotifier;
 import org.example.migration.engine.MigrationNotifier;
+import org.example.migration.engine.MySqlTenantScanner;
 import org.example.migration.engine.TenantScanner;
 import org.example.migration.engine.TokenBucketRateLimiter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -45,6 +46,6 @@ public class MigrationInfrastructureConfiguration {
     @ConditionalOnMissingBean
     public TenantScanner tenantScanner() {
         // 默认扫描名为 "tenant" 的表
-        return new TenantScanner.MySqlTenantScanner("tenant");
+        return new MySqlTenantScanner("tenant");
     }
 }

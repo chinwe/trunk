@@ -38,4 +38,19 @@ public interface CheckpointStore {
     /** 更新 run 的统计计数与状态（processed/failed/status） */
     void updateRunProgress(String runId, int processedTenants, int failedTenants,
                            org.example.migration.domain.RunStatus status);
+
+    /**
+     * 将该 run 下所有 DONE 的租户批量重置为 PENDING，并返回该 run 的全部租户 ID
+     * （不分状态）。用于阶段切换时一次性重建租户列表。
+     *
+     * <p>实现必须保证：
+     * <ul>
+     *   <li>重置与收集在逻辑上原子：收集到的列表必须反映重置后的状态</li>
+     *   <li>FAILED 租户包含在返回列表中（调用方自行决定是否跳过）</li>
+     * </ul>
+     *
+     * @param runId 迁移执行标识
+     * @return 全部租户 ID 列表，顺序不作保证
+     */
+    List<String> resetDoneAndListTenants(String runId);
 }

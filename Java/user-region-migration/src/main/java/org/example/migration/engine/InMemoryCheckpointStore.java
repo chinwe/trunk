@@ -95,4 +95,23 @@ public class InMemoryCheckpointStore implements CheckpointStore {
         run.setStatus(status);
         run.setUpdatedAt(LocalDateTime.now());
     }
+
+    @Override
+    public List<String> resetDoneAndListTenants(String runId) {
+        List<MigrationTenantState> states = tenantStates.get(runId);
+        if (states == null) {
+            return List.of();
+        }
+        List<String> allIds = new ArrayList<>(states.size());
+        LocalDateTime now = LocalDateTime.now();
+        for (MigrationTenantState s : states) {
+            if (s.getStatus() == TenantStatus.DONE) {
+                s.setStatus(TenantStatus.PENDING);
+                s.setErrorContext(null);
+                s.setUpdatedAt(now);
+            }
+            allIds.add(s.getTenantId());
+        }
+        return allIds;
+    }
 }

@@ -174,19 +174,13 @@ public class MigrationEngine {
     private String advanceToSecondary(TenantMigrationTask task, MigrationRun run, MigrationContext ctx,
                                       TenantBatcher batcher) {
         String runId = run.getRunId();
-        List<String> allDone = store.findTenantIdsByStatus(runId, TenantStatus.DONE);
-        for (String tenantId : allDone) {
-            store.updateTenantState(runId, tenantId, TenantStatus.PENDING, null);
-        }
+
+        // 批量重置 DONE→PENDING 并一次性获取全部租户 ID
+        List<String> allTenants = store.resetDoneAndListTenants(runId);
+
         run.setPhase(MigrationPhase.SECONDARY);
         store.updateRunProgress(runId, 0, 0, RunStatus.RUNNING_SECONDARY);
 
-        // SECONDARY 跑全部租户（重新从 store 取全部租户 ID —— 等价于 original request 的租户集）
-        List<String> allTenants = new java.util.ArrayList<>();
-        allTenants.addAll(store.findTenantIdsByStatus(runId, TenantStatus.PENDING));
-        allTenants.addAll(store.findTenantIdsByStatus(runId, TenantStatus.RUNNING));
-        allTenants.addAll(store.findTenantIdsByStatus(runId, TenantStatus.DONE));
-        allTenants.addAll(store.findTenantIdsByStatus(runId, TenantStatus.FAILED));
         if (!allTenants.isEmpty()) {
             batcher.processBatchesConcurrently(allTenants, batch ->
                     migrateBatch(task, ctx, runId, batch, run.getProduct(), run.getBizLine(),

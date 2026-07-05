@@ -117,6 +117,26 @@ public class JdbcCheckpointStore implements CheckpointStore {
                 Timestamp.valueOf(LocalDateTime.now()), runId);
     }
 
+    @Override
+    public List<String> resetDoneAndListTenants(String runId) {
+        return tx.execute(status -> {
+            // 1. 批量重置：DONE → PENDING（单条 SQL，不逐租户循环）
+            jdbc.update("""
+                    UPDATE migration_tenant_state
+                    SET status = ?, error_context = NULL, updated_at = ?
+                    WHERE run_id = ? AND status = ?
+                    """,
+                    TenantStatus.PENDING.name(), Timestamp.valueOf(LocalDateTime.now()),
+                    runId, TenantStatus.DONE.name());
+
+            // 2. 查询全部租户 ID（在同一事务内，反映重置后的状态）
+            return jdbc.queryForList("""
+                    SELECT tenant_id FROM migration_tenant_state
+                    WHERE run_id = ?
+                    """, String.class, runId);
+        });
+    }
+
     private MigrationRun mapRun(java.sql.ResultSet rs) throws java.sql.SQLException {
         MigrationRun run = new MigrationRun();
         run.setRunId(rs.getString("run_id"));
