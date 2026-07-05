@@ -23,18 +23,23 @@
 - ❌ **次核心业务数据搬运** —— 业务按租户自行迁移
 - ❌ **单租户内跨中间件的补偿回滚** —— 业务插件自管（框架捕获异常并标记 FAILED）
 
-### 1.3 与业务应用层的协同时序
+### 1.3 与业务应用层的协同时序（两阶段，ADR-0005）
 
 ```
 [中间件团队] 启动 CDC 增量同步（双写期开始）
        ↓
-[本工具]   搬运存量核心数据（存量 + 增量共同追平）
+[本工具]    CORE 阶段：搬运核心数据（基本信息/订单/账户余额）
        ↓
-[本工具]   对账：源=目标？
+[本工具]    对账(CORE)：源=目标？
        ↓ 一致
-[本工具]   切流：总量闸门 → CutoverAction 踢登录 → Kafka 通知 → 路由切换
+[本工具]    切流：CutoverAction 踢登录 + Kafka 通知[phase=CORE_CUTOVER] → 路由切换
        ↓
-[业务]     收到 Kafka 通知，清内存数据，重定向到缅甸
+[业务]     用户已在目标区登录 → 次核心数据短时缺失可降级
+       ↓
+[本工具]    SECONDARY 阶段：搬运次核心数据（行为日志/收藏/通知）
+            （窗口期内用户在目标区写入的新次核心数据不会被覆盖——UPSERT+时间戳 merge）
+       ↓
+[本工具]    对账(SECONDARY) → Kafka 通知[phase=ALL_DONE]
        ↓
 [中间件团队] 停源区写入，收尾
 ```
@@ -57,7 +62,7 @@
 | 3 | 回滚模型 | **方向无关迁移原语**：回滚=源/目标对调的同一 migrate | 业务只需实现一个 migrate 方法，消除 migrate/rollback 重复 |
 | 4 | 状态存储 | **MySQL 状态表** | ACID、可查可运维、团队熟 |
 | 5 | 配置策略 | **YAML + Jasypt 加密 + dev/test/prod 多 profile** | 自包含，密文可提交 git |
-| 6 | SPI 风格 | **租户分片驱动式**：框架按 batchSize 切批，业务每批一次 `migrate(ctx, List<tenantId>, ...)` | 跨中间件差异大，统一 extract/load 削足适履；业务可批量查询/批量写入优化吞吐 |
+| 6 | SPI 风格 | **租户分片驱动式（两阶段）**：框架按 batchSize 切批，每批一次 `migrate(ctx, List<tenantId>, ..., MigrationPhase phase)` | 跨中间件差异大，统一 extract/load 削足适履；业务可批量查询/批量写入优化吞吐；CORE/SECONDARY 分流搬不同数据集 |
 | 7 | 断点粒度 | **批级** | 批是状态原子单元；崩溃恢复以批为单位（ADR-0004） |
 | 8 | 失败隔离 | **批级**：批 migrate 抛异常 → 整批标 FAILED | 批是补偿单元，框架不假设批内可按租户拆分（ADR-0004） |
 | 9 | product/bizLine | **命令行自由参数透传** | 框架不预定义枚举，业务自解读 |
@@ -67,7 +72,7 @@
 | 13 | 重试 | Spring Retry，max-attempts=3 指数退避，仅瞬时性异常（黑名单排除编程错误） | 业务数据异常不重试直接 FAILED |
 | 14 | 事务边界 | 业务多中间件写入自管补偿；状态表 `createRun` 单事务 | 跨中间件无分布式事务 |
 | 15 | 对账 | 可选 verify 钩子 + 独立 verify 命令；**migrate 切流前内置对账闸门** | 业务自证一致性（ADR-0001），框架只接受二值判定 |
-| 16 | 切流 | **migrate 内部自动**（搬数据→零失败硬规则→对账闸门→CutoverAction→Kafka） | 单命令完成全流程；**有 FAILED 租户则不切流** |
+| 16 | 切流 | **两阶段自动切流**（ADR-0005）：CORE 搬完→对账(CORE)→CutoverAction 踢登录→Kafka 通知[CORE_CUTOVER]→SECONDARY 继续搬→对账(SECONDARY)→通知[ALL_DONE] | 缩短用户影响窗口（只在 CORE 阶段被堵），核心数据先行可用 |
 | 17 | 踢登录 | **CutoverAction SPI**（业务实现） | 依赖业务会话机制，框架不猜 |
 | 18 | 正向迁移语义 | **真搬迁（删源区）** | 由业务 migrate 自决，框架方向无关 |
 | 19 | rollback 方法 | **不单独定义**，复用 migrate | 方向无关原则，业务只实现 migrate |
@@ -91,6 +96,8 @@
 
 ### 3.1 核心 SPI（业务插件实现此接口）
 
+两阶段（ADR-0005）：框架对每次 Run 先驱动全批 CORE、切流后再驱动全批 SECONDARY。业务按 `MigrationPhase` 参数分流。
+
 ```java
 package org.example.migration.spi;
 
@@ -99,13 +106,17 @@ public interface TenantMigrationTask {
     String taskName();
 
     /**
-     * 唯一必须实现的方法 —— 方向无关。
+     * 唯一必须实现的方法 —— 方向无关、按阶段分流。
      * 契约：实现必须基于 ctx.sourceRegion() / ctx.targetRegion()，禁止硬编码具体 region。
      *   正向迁移：source=源区, target=目标区
      *   逆向回滚：source=原目标区, target=原源区（框架对调注入）
+     *
+     *   phase=CORE：搬核心数据（登录后立即必需）。CORE 在切流之前，目标区无用户写入，写冲突无顾虑。
+     *   phase=SECONDARY：搬次核心数据（切流后执行）。用户已在目标区写入，
+     *                   必须用 UPSERT+时间戳 merge，不得简单覆盖（框架不假设源区冻结）。
      */
     MigrationResult migrate(MigrationContext ctx, List<String> tenantIds,
-                            String product, String bizLine);
+                            String product, String bizLine, MigrationPhase phase);
 
     /** 可选：深度对账，默认未实现。业务可覆盖做总量/抽样/逐条校验。 */
     default VerifyResult verify(MigrationContext ctx, List<String> tenantIds,
@@ -117,11 +128,13 @@ public interface TenantMigrationTask {
 
 ### 3.2 切流 SPI（业务插件实现踢登录等切流动作）
 
+**幂等契约（ADR-0005）**：evict 必须幂等——对同一批租户调用 N 次与 1 次结果等价。CORE 切流后框架可能因崩溃恢复重做 evict。
+
 ```java
 package org.example.migration.spi;
 
 public interface CutoverAction {
-    /** 切流时框架调用：业务实现踢登录、清理会话等切流动作 */
+    /** 切流时框架调用。业务实现踢登录、清理会话等切流动作。必须幂等（删 Redis token / 调"删除会话"语义鉴权接口）。 */
     void evict(MigrationContext ctx, List<String> tenantIds, String product, String bizLine);
 }
 ```

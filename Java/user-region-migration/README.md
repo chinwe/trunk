@@ -39,26 +39,26 @@ java -jar target/user-region-migration-1.0-SNAPSHOT.jar --spring.shell.interacti
 migrate    --task <name> -s <region> --target <region>
            [--product <p>] [--biz-line <b>]
            [--tenants <t1,t2,...>] [--batch-size 50] [--threads 4]
-  正向迁移：扫租户(或手动指定)→搬数据→零失败硬规则→对账闸门→切流
+  正向迁移（两阶段）：CORE→切流→SECONDARY（ADR-0005）
   短选项：-t <name> = --task, -s <region> = --source
 
 rollback   --run-id <id> -t <name>
-  逆向回滚（方向对调复用 migrate）
+  逆向回滚：方向对调复用 migrate（已切流态——CORE_CUTOVER_DONE/RUNNING_SECONDARY/DONE——拒绝执行）
 
 resume     --run-id <id> -t <name>
-  从断点续传（只处理 PENDING 租户）
+  从断点续传：按 Run 状态分发（CORE/SECONDARY）
 
 verify     --run-id <id> -t <name>
   对账（调用业务插件 verify 钩子）
 
 status     --run-id <id>
-  查询迁移状态
+  查询迁移状态（含两阶段标识：status/phase 字段）
 
 tasks
   列出已注册业务插件
 
 dry-run    -s <region> --target <region> [--tenants <t1,t2,...>]
-  预估待迁移租户数（不写数据）
+  预估待迁移租户数与两阶段编排（不写数据）
 ```
 
 `--tenants` 手动指定租户；不填则通过 TenantScanner 自动扫描源区。
@@ -71,6 +71,8 @@ dry-run    -s <region> --target <region> [--tenants <t1,t2,...>]
 
 ### 1. 实现迁移任务
 
+业务实现 `TenantMigrationTask`，按 `MigrationPhase` 分流（ADR-0005）：
+
 ```java
 @Component
 public class UserMigrationTask implements TenantMigrationTask {
@@ -82,34 +84,41 @@ public class UserMigrationTask implements TenantMigrationTask {
 
     @Override
     public MigrationResult migrate(MigrationContext ctx, List<String> tenantIds,
-                                   String product, String bizLine) {
+                                   String product, String bizLine, MigrationPhase phase) {
         // 【关键】必须方向无关：通过 ctx.sourceRegion()/targetRegion() 获取客户端，
         //        禁止硬编码具体 region。这样回滚时框架对调 region，同一份逻辑反向执行。
         MySqlClient source = ctx.client(ctx.sourceRegion(), ClientType.MYSQL, "business", MySqlClient.class);
         MySqlClient target = ctx.client(ctx.targetRegion(), ClientType.MYSQL, "business", MySqlClient.class);
 
-        // 从源区读 → 写目标区 → 删源区（真搬迁）
-        List<?> users = source.queryByTenants("SELECT * FROM users WHERE tenant_id IN ...", tenantIds);
-        // 【幂等契约 ADR-0002】写入必须幂等：用 UPSERT 而非 INSERT。
-        // resume/retry/rollback 都可能对同一租户重复调用 migrate，
-        // 非幂等 INSERT 会在第一次重试时插入重复行。
-        // target.batchUpdate("INSERT INTO users (...) VALUES (...) ON DUPLICATE KEY UPDATE ...", toArgs(users));
-        source.deleteByTenants("DELETE FROM users WHERE tenant_id IN ...", tenantIds);
+        if (phase == MigrationPhase.CORE) {
+            // 核心数据：登录后立即必需（基本信息/订单等）。切流前执行，目标区无用户写入。
+            List<?> users = source.queryByTenants("SELECT * FROM users WHERE tenant_id IN ...", tenantIds);
+            // 【幂等契约 ADR-0002】写入必须幂等：用 UPSERT
+            // target.batchUpdate("INSERT INTO users (...) VALUES (...) ON DUPLICATE KEY UPDATE ...", toArgs(users));
+            source.deleteByTenants("DELETE FROM users WHERE tenant_id IN ...", tenantIds);
+            return MigrationResult.success(users.size());
+        }
 
-        return MigrationResult.success(users.size());
+        // SECONDARY 阶段：次核心数据（行为日志等）。切流后执行，用户已在目标区写入，
+        //                必须用 UPSERT + updated_at merge，不得简单覆盖（ADR-0005）。
+        List<?> activities = source.queryByTenants("SELECT * FROM user_activity WHERE tenant_id IN ...", tenantIds);
+        // target.batchUpdate("INSERT INTO user_activity (...) ON DUPLICATE KEY UPDATE updated_at = IF(...)", ...);
+        source.deleteByTenants("DELETE FROM user_activity WHERE tenant_id IN ...", tenantIds);
+        return MigrationResult.success(activities.size());
     }
 
     // 可选：深度对账
     @Override
     public VerifyResult verify(MigrationContext ctx, List<String> tenantIds,
                                String product, String bizLine) {
-        // 实现总量/抽样/逐条校验
         return VerifyResult.passed(tenantIds.size());
     }
 }
 ```
 
 ### 2. 实现切流动作（可选）
+
+**幂等契约（ADR-0005）**：evict 必须幂等——删 Redis token（天然幂等）或调"删除会话"语义鉴权接口。不得用"触发推送通知"等非幂等语义。
 
 ```java
 @Component("user-migration")  // bean 名必须与 taskName 对齐
@@ -208,9 +217,9 @@ public class CustomTenantScanner implements TenantScanner {
 @Component
 public class UserReconciliationChecker implements ReconciliationChecker {
     @Override
-    public boolean consistent(MigrationRun run, List<String> migratedTenantIds) {
-        // 业务自证:本次迁移范围内的数据在源/目标 region 间是否一致
-        // 可用 count 差、checksum、抽样、逐条比对或组合
+    public boolean consistent(MigrationRun run, List<String> migratedTenantIds, MigrationPhase phase) {
+        // 业务自证：按 phase 分流对账数据集。CORE 对账核心表，SECONDARY 对账次核心表。
+        // 可用 count 差、checksum、抽样、逐条比对或组合。
     }
 }
 ```
@@ -241,7 +250,8 @@ mvn test
 ```
 
 测试覆盖：
-- **引擎核心行为**（TDD）：批级隔离（批间隔离 + 批内全失败）、孤儿批恢复、零失败硬规则、切流对账闸门、全流程编排、回滚方向无关、批间并发
+- **两阶段迁移**（ADR-0005）：CORE→SECONDARY 顺序、双通知（phase=CORE_CUTOVER/ALL_DONE）、CORE 失败不进 SECONDARY、SECONDARY 对账失败、resume 三态分发、已切流禁 rollback
+- **引擎核心行为**：批级隔离（批间隔离 + 批内全失败）、孤儿批恢复、零失败硬规则、切流对账闸门、全流程编排、回滚方向无关（未切流态）、批间并发
 - **对账闸门**：业务自证一致性的委托与异常容错（业务 checker 抛异常视为不通过）
 - **状态层契约**：CheckpointStore 的 run/租户状态管理（InMemory + Jdbc 共享契约测试）
 - **配置绑定**：RegionProperties 多 region 多中间件结构
@@ -268,7 +278,7 @@ org.example.migration
 │                 MigrationInfrastructureConfiguration / *ClientFactory ×6）
 ├── shell/        Spring Shell 命令（MigrationCommands / ShellApplication /
 │                 ShellAutoConfiguration / TaskRegistry）
-├── domain/       领域模型（RegionName / ClientType / Direction / RunStatus / TenantStatus）
+├── domain/       领域模型（RegionName / ClientType / Direction / MigrationPhase / RunStatus / TenantStatus）
 │   └── entity/   实体（MigrationRun / MigrationTenantState）
 └── example/      参考实现（UserMigrationTask / UserCutoverAction）
 ```
